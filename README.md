@@ -29,3 +29,15 @@ Aplikacija ne prikuplja niti šalje korisničke podatke. Očitanja se spremaju l
 ## Distribucija
 
 Projekt je pripremljen za objavu izvornog koda i APK izdanja na GitHubu te za kataloge poput IzzyOnDroida i F-Droida. Aplikacija nije službeni proizvod HEP-a.
+
+## Instalacija i nadogradnje putem Obtainiuma
+
+1. Instaliraj [Obtainium](https://github.com/ImranR98/Obtainium/releases/latest).
+2. U Obtainiumu odaberi **Add App**.
+3. Kao izvor zalijepi ovu adresu:
+
+   `https://github.com/elviscankovic/moja-potrosnja-struje`
+
+4. Potvrdi dodavanje aplikacije. Obtainium će prepoznati GitHub izdanje i ponuditi instalaciju najnovijeg APK-a.
+
+Nakon toga Obtainium automatski provjerava nova izdanja. Nadogradnje se instaliraju preko postojeće aplikacije i čuvaju lokalno spremljena očitanja.
