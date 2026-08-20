@@ -1,6 +1,6 @@
 {
   "name": "moja-potrosnja-struje-android",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "private": true,
   "description": "Besplatna lokalna Android aplikacija za evidenciju potrošnje električne energije.",

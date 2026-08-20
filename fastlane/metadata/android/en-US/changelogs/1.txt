@@ -1,0 +1,6 @@
+Initial public release.
+
+• VT and NT meter reading records
+• consumption overview and informational cost estimate
+• chart, history, backup and restore
+• fully offline use without accounts or advertisements

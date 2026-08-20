@@ -1,0 +1,3 @@
+Added metadata, icon and screenshots required for distribution through open-source app stores.
+
+The app remains fully offline, with no accounts, ads or tracking.

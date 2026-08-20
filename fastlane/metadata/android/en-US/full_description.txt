@@ -1,0 +1,15 @@
+Moja potrošnja struje is a simple, free and privacy-friendly application for tracking household electricity meter readings.
+
+Enter the reading date, higher tariff (VT) and lower tariff (NT). The application displays electricity consumption between readings, consumption history, a chart and an informational cost estimate.
+
+Features:
+• recording VT and NT meter readings
+• consumption calculation between reading periods
+• informational electricity cost estimate
+• consumption chart and reading history
+• JSON backup and restore
+• completely offline operation
+
+All readings remain locally on the device. The application has no advertisements, analytics, user accounts or Internet permission.
+
+This is not an official HEP application. Calculations are informational and may differ from the actual electricity bill.

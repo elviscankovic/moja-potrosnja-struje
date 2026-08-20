@@ -1,0 +1,3 @@
+Dodani su podaci, ikona i snimke zaslona potrebni za distribuciju putem trgovina otvorenog koda.
+
+Aplikacija i dalje radi potpuno lokalno, bez računa, oglasa i praćenja.
