@@ -31,8 +31,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Postavi Android alate
+        uses: android-actions/setup-android@v3
+
       - name: Postavi Android SDK 35
-        run: yes | sdkmanager --licenses >/dev/null && sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Instaliraj ovisnosti i izradi release
         run: |
