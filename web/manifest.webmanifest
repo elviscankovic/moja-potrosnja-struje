@@ -1,0 +1,14 @@
+{
+  "name": "Moja potrošnja struje",
+  "short_name": "Potrošnja",
+  "description": "Lokalna evidencija očitanja i potrošnje električne energije.",
+  "lang": "hr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

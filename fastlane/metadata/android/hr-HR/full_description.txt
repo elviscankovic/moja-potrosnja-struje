@@ -1,0 +1,15 @@
+Moja potrošnja struje jednostavna je i besplatna aplikacija za praćenje očitanja električnog brojila.
+
+Unesite datum, višu tarifu (VT) i nižu tarifu (NT), a aplikacija će prikazati potrošnju između očitanja, pregled kretanja potrošnje i informativnu procjenu troška.
+
+Glavne mogućnosti:
+• evidencija VT i NT očitanja
+• izračun potrošnje između razdoblja
+• informativna procjena troška
+• graf i povijest očitanja
+• izvoz i uvoz sigurnosne kopije
+• rad bez registracije i bez internetske veze
+
+Svi podaci ostaju lokalno na uređaju. Aplikacija nema analitiku, oglase ni korisničke račune.
+
+Ovo nije službena aplikacija HEP-a. Izračun je informativan i može odstupati od stvarnog računa.

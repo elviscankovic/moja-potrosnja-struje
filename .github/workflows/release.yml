@@ -1,0 +1,55 @@
+name: Android release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preuzmi izvorni kod
+        uses: actions/checkout@v4
+
+      - name: Postavi Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Postavi Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Postavi Android SDK 35
+        run: yes | sdkmanager --licenses >/dev/null && sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Instaliraj ovisnosti i izradi release
+        run: |
+          npm ci
+          npm run cap:sync
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Potpiši APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          mkdir -p release
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release/release-key.jks
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk release/aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks release/release-key.jks --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --out "release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk" release/aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk"
+
+      - name: Objavi GitHub izdanje
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk" --generate-notes

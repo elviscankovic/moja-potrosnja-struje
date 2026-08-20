@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Moja potrošnja struje</string>
+    <string name="title_activity_main">Moja potrošnja struje</string>
+    <string name="package_name">hr.cankovic.mojapotrosnjastruje</string>
+    <string name="custom_url_scheme">hr.cankovic.mojapotrosnjastruje</string>
+</resources>
