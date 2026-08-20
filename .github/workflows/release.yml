@@ -11,6 +11,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
     steps:
       - name: Preuzmi izvorni kod
         uses: actions/checkout@v4
@@ -38,10 +42,7 @@ jobs:
           ./gradlew assembleRelease
 
       - name: Potpiši APK
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
         run: |
           mkdir -p release
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release/release-key.jks
@@ -50,6 +51,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk"
 
       - name: Objavi GitHub izdanje
+        if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" "release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk" --generate-notes
