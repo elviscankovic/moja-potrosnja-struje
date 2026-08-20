@@ -32,6 +32,10 @@ Projekt je pripremljen za objavu izvornog koda i APK izdanja na GitHubu te za ka
 
 ## Instalacija i nadogradnje putem Obtainiuma
 
+[Dodaj aplikaciju u Obtainium jednim dodirom](https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22hr.cankovic.mojapotrosnjastruje%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Felviscankovic%2Fmoja-potrosnja-struje%22%2C%22author%22%3A%22elviscankovic%22%2C%22name%22%3A%22Moja%20potro%C5%A1nja%20struje%22%7D)
+
+Ili je dodaj ručno:
+
 1. Instaliraj [Obtainium](https://github.com/ImranR98/Obtainium/releases/latest).
 2. U Obtainiumu odaberi **Add App**.
 3. Kao izvor zalijepi ovu adresu:
