@@ -25,10 +25,17 @@ for (const file of webFiles) {
 // Lokalna ESM verzija generatora barkoda: nema CDN-a ni mrežnog slanja podataka.
 // @bwip-js/browser isporučuje browser ESM kao dist/bwip-js.mjs.
 cpSync('node_modules/@bwip-js/browser/dist/bwip-js.mjs', 'www/vendor/bwip-js-min.js');
+cpSync('node_modules/@bwip-js/browser/dist/bwipp.mjs', 'www/vendor/bwipp.mjs');
 
 // Prekini build ako kopirana JavaScript datoteka uvozi modul koji nedostaje.
 // Tako APK više ne može biti uspješno izrađen s neaktivnim gumbima u aplikaciji.
-for (const file of webFiles.filter((name) => name.endsWith('.js'))) {
+const javascriptFiles = [
+  ...webFiles.filter((name) => name.endsWith('.js')),
+  'vendor/bwip-js-min.js',
+  'vendor/bwipp.mjs'
+];
+
+for (const file of javascriptFiles) {
   const source = readFileSync(`www/${file}`, 'utf8');
   const imports = source.matchAll(/from\s+['"](\.\.?\/[^'"]+)['"]/g);
 
