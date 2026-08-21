@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { DEFAULT_RATES, calculateBill, enrichReadings, monthsBetween, validateReading } from './calc.js';
-import { amountToHub3, buildHub3Payload } from './hub3.js';
+import {
+  amountToHub3,
+  buildHepReference,
+  buildHub3Payload,
+  calculateMod11Ini,
+  sequenceForMonth
+} from './hub3.js';
 import { parseBackup, readBackupFile } from './backup.js';
 
 const hepExample = calculateBill(325, 175, DEFAULT_RATES, 1);
@@ -42,6 +48,22 @@ assert.equal(validateReading({ id: 'b', date: '2026-02-15', vt: 1250, nt: 620 },
 assert.match(validateReading({ id: 'b', date: '2026-02-15', vt: 999, nt: 620 }, editReadings, 'b'), /manje od prethodnog/);
 assert.match(validateReading({ id: 'b', date: '2026-02-15', vt: 1450, nt: 620 }, editReadings, 'b'), /veće od sljedećeg/);
 
+// HR01 / MOD11INI: svih pet priloženih HEP računa mora dati istu kontrolnu znamenku.
+const hepReferences = [
+  ['2026-05', 1, '2201425014-260501-6'],
+  ['2026-06', 2, '2201425014-260602-0'],
+  ['2026-07', 3, '2201425014-260703-5'],
+  ['2026-08', 4, '2201425014-260804-0'],
+  ['2026-09', 5, '2201425014-260905-4']
+];
+for (const [month, sequence, reference] of hepReferences) {
+  assert.equal(buildHepReference({ contractAccount: '2201425014', month, sequence }), reference);
+}
+assert.equal(calculateMod11Ini('10230578901'), 6);
+assert.equal(sequenceForMonth('2026-09', 5, '2026-05'), 1);
+assert.equal(sequenceForMonth('2026-09', 5, '2027-01'), 9);
+assert.throws(() => sequenceForMonth('2026-09', 5, '2025-01'), /nije moguće/);
+
 // HUB3: stvarni HEP primjer koristi se samo kao test strukture.
 assert.equal(amountToHub3(13.97), '000000000001397');
 const hub3 = buildHub3Payload({
@@ -54,7 +76,7 @@ const hub3 = buildHub3Payload({
   receiverCity: '10000 ZAGREB',
   iban: 'HR4924070001500325331',
   model: 'HR01',
-  reference: '2201425014-2609005-4',
+  reference: '2201425014-260905-4',
   purposeCode: '',
   description: 'UGOVORNI RACUN 2201425014'
 });
@@ -66,7 +88,7 @@ assert.equal(hub3Fields[2], '000000000001397');
 assert.equal(hub3Fields[6], 'HEP ELEKTRA D.O.O.');
 assert.equal(hub3Fields[9], 'HR4924070001500325331');
 assert.equal(hub3Fields[10], 'HR01');
-assert.equal(hub3Fields[11], '2201425014-2609005-4');
+assert.equal(hub3Fields[11], '2201425014-260905-4');
 assert.equal(hub3Fields[12], '');
 
 assert.throws(() => buildHub3Payload({ amount: 13.97 }), /Nedostaje podatak/);

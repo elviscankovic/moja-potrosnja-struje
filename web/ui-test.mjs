@@ -71,9 +71,18 @@ await new Promise((resolve) => setTimeout(resolve, 25));
 assert.match(document.querySelector('#readingCount').textContent, /^2 očitanja$/);
 assert.match(document.querySelector('#historyBody').textContent, /498/);
 
+const paymentButtons = document.querySelectorAll('.payment-button');
+assert.equal(paymentButtons.length, 1);
+paymentButtons[0].click();
+await new Promise((resolve) => setTimeout(resolve, 25));
+assert.equal(document.querySelector('#paymentModal').classList.contains('hidden'), false);
+assert.equal(document.querySelector('#paymentMonth').value, '2026-08');
+assert.equal(document.querySelector('#paymentSequence').value, '4');
+assert.equal(document.querySelector('#paymentReference').textContent, '2201425014-260804-0');
+
 const barcodeModule = await import(pathToFileURL(resolve(webDir, 'vendor/bwip-js-min.js')).href);
 assert.equal(typeof barcodeModule.toCanvas, 'function');
 assert.equal(typeof barcodeModule.pdf417, 'function');
 assert.deepEqual(pageErrors, []);
 
-console.log('UI test je prošao: pokretanje aplikacije, spremanje očitanja, JSON uvoz i PDF417 moduli.');
+console.log('UI test je prošao: spremanje, JSON uvoz, barkod uz obračun, HR01 poziv i PDF417 moduli.');

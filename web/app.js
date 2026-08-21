@@ -1,13 +1,25 @@
 import { DEFAULT_RATES, enrichReadings, formatDate, validateReading } from './calc.js';
-import { buildHub3Payload } from './hub3.js';
+import { buildHepReference, buildHub3Payload, sequenceForMonth } from './hub3.js';
 import { parseBackup, readBackupFile } from './backup.js';
 
 const STORAGE_KEY = 'moja-potrosnja-struje-v1';
 const EMPTY_PAYER = Object.freeze({ name: '', address: '', postalCode: '', city: '' });
+const DEFAULT_PAYMENT = Object.freeze({
+  contractAccount: '2201425014',
+  iban: 'HR4924070001500325331',
+  anchorMonth: '2026-09',
+  anchorSequence: 5
+});
+const HEP_RECEIVER = Object.freeze({
+  name: 'HEP ELEKTRA D.O.O.',
+  address: 'ULICA GRADA VUKOVARA 37',
+  city: '10000 ZAGREB'
+});
 const state = loadState();
 const IS_NATIVE = Boolean(window.Capacitor?.isNativePlatform?.());
 let deferredInstallPrompt = null;
 let toastTimer = null;
+let activePaymentReadingId = null;
 
 const elements = {
   form: document.querySelector('#readingForm'),
@@ -30,7 +42,22 @@ const elements = {
   payerAddress: document.querySelector('#payerAddress'),
   payerPostalCode: document.querySelector('#payerPostalCode'),
   payerCity: document.querySelector('#payerCity'),
-  generateTestBarcodeBtn: document.querySelector('#generateTestBarcodeBtn'),
+  paymentSettingsForm: document.querySelector('#paymentSettingsForm'),
+  contractAccount: document.querySelector('#contractAccount'),
+  receiverIban: document.querySelector('#receiverIban'),
+  referenceAnchorMonth: document.querySelector('#referenceAnchorMonth'),
+  referenceAnchorSequence: document.querySelector('#referenceAnchorSequence'),
+  paymentModal: document.querySelector('#paymentModal'),
+  paymentBarcodeForm: document.querySelector('#paymentBarcodeForm'),
+  paymentModalTitle: document.querySelector('#paymentModalTitle'),
+  paymentPeriod: document.querySelector('#paymentPeriod'),
+  paymentAmount: document.querySelector('#paymentAmount'),
+  paymentMonth: document.querySelector('#paymentMonth'),
+  paymentSequence: document.querySelector('#paymentSequence'),
+  paymentReference: document.querySelector('#paymentReference'),
+  paymentIban: document.querySelector('#paymentIban'),
+  closePaymentModalBtn: document.querySelector('#closePaymentModalBtn'),
+  savePaymentBarcodeBtn: document.querySelector('#savePaymentBarcodeBtn'),
   barcodeError: document.querySelector('#barcodeError'),
   barcodeBox: document.querySelector('#barcodeBox'),
   paymentBarcode: document.querySelector('#paymentBarcode')
@@ -45,10 +72,16 @@ function loadState() {
     return {
       readings: saved.readings,
       rates: { ...DEFAULT_RATES, ...(saved.rates || {}) },
-      payer: { ...EMPTY_PAYER, ...(saved.payer || {}) }
+      payer: { ...EMPTY_PAYER, ...(saved.payer || {}) },
+      payment: { ...DEFAULT_PAYMENT, ...(saved.payment || {}) }
     };
   } catch {
-    return { readings: [], rates: { ...DEFAULT_RATES }, payer: { ...EMPTY_PAYER } };
+    return {
+      readings: [],
+      rates: { ...DEFAULT_RATES },
+      payer: { ...EMPTY_PAYER },
+      payment: { ...DEFAULT_PAYMENT }
+    };
   }
 }
 
@@ -107,6 +140,7 @@ function render() {
   renderChart(enriched);
   renderRates();
   renderPayer();
+  renderPaymentSettings();
 }
 
 function renderSummary(readings) {
@@ -163,12 +197,17 @@ function renderHistory(readings) {
       ? `<strong>${number(item.usage.total)} kWh</strong><small>VT ${number(item.usage.vt)} · NT ${number(item.usage.nt)}</small>`
       : '<span class="baseline">Početno stanje</span>';
     const cost = item.bill ? `<strong>${euro(item.bill.total)}</strong><small>${item.months} mj.</small>` : '—';
+    const paymentButton = item.bill ? `
+        <button class="icon-button payment-button" data-id="${item.id}" type="button" aria-label="Generiraj barkod za uplatu" title="Barkod za uplatu">
+          <svg class="barcode-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2v16H3V4Zm4 0h1v16H7V4Zm3 0h3v16h-3V4Zm5 0h1v16h-1V4Zm3 0h3v16h-3V4Z"/></svg><span class="payment-button-label">Barkod</span>
+        </button>` : '';
     row.innerHTML = `
       <td data-label="Datum"><div class="cell-content"><strong>${formatDate(item.date)}</strong>${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</div></td>
       <td data-label="Stanje"><div class="cell-content"><span>VT ${number(item.vt)}</span><small>NT ${number(item.nt)}</small></div></td>
       <td data-label="Potrošnja"><div class="cell-content">${usage}</div></td>
       <td data-label="Procjena"><div class="cell-content">${cost}</div></td>
       <td class="row-actions">
+        ${paymentButton}
         <button class="icon-button edit-button" data-id="${item.id}" type="button" aria-label="Uredi očitanje">Uredi</button>
         <button class="icon-button danger delete-button" data-id="${item.id}" type="button" aria-label="Obriši očitanje">Obriši</button>
       </td>`;
@@ -214,46 +253,165 @@ function renderPayer() {
   elements.payerCity.value = state.payer.city || '';
 }
 
-async function generateTestBarcode() {
+function renderPaymentSettings() {
+  elements.contractAccount.value = state.payment.contractAccount || '';
+  elements.receiverIban.value = state.payment.iban || '';
+  elements.referenceAnchorMonth.value = state.payment.anchorMonth || '';
+  elements.referenceAnchorSequence.value = state.payment.anchorSequence || '';
+}
+
+function hideBarcodeError() {
+  elements.barcodeError.textContent = '';
   elements.barcodeError.classList.add('hidden');
-  elements.barcodeBox.classList.add('hidden');
+}
+
+function showBarcodeError(error) {
+  elements.barcodeError.textContent = error?.message || 'Barkod nije moguće generirati.';
+  elements.barcodeError.classList.remove('hidden');
+}
+
+function updatePaymentReference() {
   try {
-    // Generator barkoda učitava se tek kad ga korisnik zatraži. Njegov eventualni
-    // kvar zato ne može zaustaviti spremanje očitanja i uvoz sigurnosne kopije.
-    const bwipjs = await import('./vendor/bwip-js-min.js');
+    const reference = buildHepReference({
+      contractAccount: state.payment.contractAccount,
+      month: elements.paymentMonth.value,
+      sequence: Number(elements.paymentSequence.value)
+    });
+    elements.paymentReference.textContent = reference;
+    return reference;
+  } catch (error) {
+    elements.paymentReference.textContent = '—';
+    throw error;
+  }
+}
+
+function closePaymentModal() {
+  activePaymentReadingId = null;
+  elements.paymentModal.classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  hideBarcodeError();
+}
+
+async function generatePaymentBarcode() {
+  hideBarcodeError();
+  elements.barcodeBox.classList.add('hidden');
+  elements.savePaymentBarcodeBtn.disabled = true;
+
+  try {
+    const item = enrichReadings(state.readings, state.rates).find((reading) => reading.id === activePaymentReadingId);
+    if (!item?.bill) throw new Error('Za početno očitanje nema iznosa za plaćanje.');
+
+    const reference = updatePaymentReference();
+    const amount = Number(elements.paymentAmount.value);
     const payload = buildHub3Payload({
-      amount: 13.97,
+      amount,
       payerName: state.payer.name,
       payerAddress: state.payer.address,
       payerCity: `${state.payer.postalCode} ${state.payer.city}`.trim(),
-      receiverName: 'HEP ELEKTRA D.O.O.',
-      receiverAddress: 'ULICA GRADA VUKOVARA 37',
-      receiverCity: '10000 ZAGREB',
-      iban: 'HR4924070001500325331',
+      receiverName: HEP_RECEIVER.name,
+      receiverAddress: HEP_RECEIVER.address,
+      receiverCity: HEP_RECEIVER.city,
+      iban: state.payment.iban,
       model: 'HR01',
-      reference: '2201425014-2609005-4',
+      reference,
       purposeCode: '',
-      description: 'UGOVORNI RACUN 2201425014'
+      description: `UGOVORNI RACUN: ${state.payment.contractAccount}`
     });
 
+    // Generator se učitava tek na zahtjev kako njegov eventualni kvar ne bi
+    // mogao zaustaviti spremanje očitanja ili uvoz sigurnosne kopije.
+    const bwipjs = await import('./vendor/bwip-js-min.js');
     bwipjs.toCanvas(elements.paymentBarcode, {
       bcid: 'pdf417',
       text: payload,
       columns: 9,
       eclevel: 4,
-      scale: 2,
+      scale: 3,
       height: 3,
+      paddingwidth: 12,
+      paddingheight: 12,
+      backgroundcolor: 'FFFFFF',
       includetext: false
     });
     elements.barcodeBox.classList.remove('hidden');
-    elements.barcodeBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    elements.savePaymentBarcodeBtn.disabled = false;
   } catch (error) {
-    elements.barcodeError.textContent = error?.message || 'Barkod nije moguće generirati.';
-    elements.barcodeError.classList.remove('hidden');
+    showBarcodeError(error);
   }
 }
 
-elements.generateTestBarcodeBtn.addEventListener('click', generateTestBarcode);
+async function openPaymentModal(item) {
+  const readings = enrichReadings(state.readings, state.rates);
+  const index = readings.findIndex((reading) => reading.id === item.id);
+  const paymentItem = readings[index];
+  if (!paymentItem?.bill) return;
+
+  activePaymentReadingId = item.id;
+  const month = paymentItem.date.slice(0, 7);
+  elements.paymentModalTitle.textContent = `Uplata za očitanje ${formatDate(paymentItem.date)}`;
+  elements.paymentPeriod.textContent = index > 0
+    ? `Obračunsko razdoblje ${formatDate(readings[index - 1].date)} – ${formatDate(paymentItem.date)}`
+    : '';
+  elements.paymentAmount.value = paymentItem.bill.total.toFixed(2);
+  elements.paymentMonth.value = month;
+  elements.paymentIban.textContent = state.payment.iban;
+  elements.barcodeBox.classList.add('hidden');
+  elements.savePaymentBarcodeBtn.disabled = true;
+  hideBarcodeError();
+
+  try {
+    elements.paymentSequence.value = sequenceForMonth(
+      state.payment.anchorMonth,
+      state.payment.anchorSequence,
+      month
+    );
+    updatePaymentReference();
+  } catch (error) {
+    elements.paymentSequence.value = '';
+    elements.paymentReference.textContent = '—';
+    showBarcodeError(error);
+  }
+
+  elements.paymentModal.classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  await generatePaymentBarcode();
+}
+
+async function savePaymentBarcode() {
+  try {
+    if (!elements.paymentBarcode.width || !elements.paymentBarcode.height) {
+      throw new Error('Najprije generiraj barkod.');
+    }
+
+    const month = elements.paymentMonth.value;
+    const fileName = `hep-uplata-${month}.png`;
+    const dataUrl = elements.paymentBarcode.toDataURL('image/png');
+
+    if (IS_NATIVE && window.Capacitor?.Plugins?.Filesystem && window.Capacitor?.Plugins?.Share) {
+      const saved = await window.Capacitor.Plugins.Filesystem.writeFile({
+        path: fileName,
+        data: dataUrl.split(',')[1],
+        directory: 'CACHE'
+      });
+      await window.Capacitor.Plugins.Share.share({
+        title: 'HEP barkod za uplatu',
+        text: `${elements.paymentReference.textContent} · ${elements.paymentAmount.value} EUR`,
+        url: saved.uri,
+        dialogTitle: 'Spremi ili podijeli barkod'
+      });
+      showToast('Barkod je pripremljen za spremanje ili dijeljenje.');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = fileName;
+    link.click();
+    showToast('Slika barkoda je spremljena.');
+  } catch (error) {
+    showBarcodeError(error);
+  }
+}
 
 elements.form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -283,11 +441,55 @@ elements.form.addEventListener('submit', (event) => {
 
 elements.cancelBtn.addEventListener('click', resetForm);
 
+elements.paymentBarcodeForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  generatePaymentBarcode();
+});
+
+elements.paymentMonth.addEventListener('change', () => {
+  hideBarcodeError();
+  try {
+    elements.paymentSequence.value = sequenceForMonth(
+      state.payment.anchorMonth,
+      state.payment.anchorSequence,
+      elements.paymentMonth.value
+    );
+    updatePaymentReference();
+  } catch (error) {
+    elements.paymentSequence.value = '';
+    elements.paymentReference.textContent = '—';
+    showBarcodeError(error);
+  }
+});
+
+elements.paymentSequence.addEventListener('input', () => {
+  hideBarcodeError();
+  try {
+    updatePaymentReference();
+  } catch (error) {
+    showBarcodeError(error);
+  }
+});
+
+elements.closePaymentModalBtn.addEventListener('click', closePaymentModal);
+elements.savePaymentBarcodeBtn.addEventListener('click', savePaymentBarcode);
+elements.paymentModal.addEventListener('click', (event) => {
+  if (event.target === elements.paymentModal) closePaymentModal();
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !elements.paymentModal.classList.contains('hidden')) closePaymentModal();
+});
+
 elements.historyBody.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-id]');
   if (!button) return;
   const item = state.readings.find((reading) => reading.id === button.dataset.id);
   if (!item) return;
+
+  if (button.classList.contains('payment-button')) {
+    openPaymentModal(item);
+    return;
+  }
 
   if (button.classList.contains('edit-button')) {
     elements.editingId.value = item.id;
@@ -350,9 +552,34 @@ elements.payerForm.addEventListener('submit', (event) => {
   showToast('Podaci platitelja su spremljeni.');
 });
 
+elements.paymentSettingsForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const payment = {
+    contractAccount: elements.contractAccount.value.trim(),
+    iban: elements.receiverIban.value.replace(/\s+/g, '').toUpperCase(),
+    anchorMonth: elements.referenceAnchorMonth.value,
+    anchorSequence: Number(elements.referenceAnchorSequence.value)
+  };
+
+  try {
+    if (!/^HR\d{19}$/.test(payment.iban)) throw new Error('Provjeri IBAN primatelja.');
+    buildHepReference({
+      contractAccount: payment.contractAccount,
+      month: payment.anchorMonth,
+      sequence: payment.anchorSequence
+    });
+    state.payment = payment;
+    saveState();
+    renderPaymentSettings();
+    showToast('Podaci za plaćanje su spremljeni.');
+  } catch (error) {
+    showToast(error?.message || 'Provjeri podatke za plaćanje.');
+  }
+});
+
 document.querySelector('#exportBtn').addEventListener('click', async () => {
   const fileName = `potrosnja-struje-${today()}.json`;
-  const contents = JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), ...state }, null, 2);
+  const contents = JSON.stringify({ version: 3, exportedAt: new Date().toISOString(), ...state }, null, 2);
 
   if (IS_NATIVE && window.Capacitor?.Plugins?.Filesystem && window.Capacitor?.Plugins?.Share) {
     try {
@@ -405,6 +632,7 @@ document.querySelector('#importInput').addEventListener('change', async (event) 
     state.readings = imported.readings;
     state.rates = { ...DEFAULT_RATES, ...imported.rates };
     state.payer = { ...EMPTY_PAYER, ...(imported.payer || {}) };
+    state.payment = { ...DEFAULT_PAYMENT, ...(imported.payment || {}) };
 
     saveState();
     render();
