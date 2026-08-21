@@ -1,7 +1,6 @@
 import { DEFAULT_RATES, enrichReadings, formatDate, validateReading } from './calc.js';
 import { buildHub3Payload } from './hub3.js';
 import { parseBackup, readBackupFile } from './backup.js';
-import bwipjs from './vendor/bwip-js-min.js';
 
 const STORAGE_KEY = 'moja-potrosnja-struje-v1';
 const EMPTY_PAYER = Object.freeze({ name: '', address: '', postalCode: '', city: '' });
@@ -215,10 +214,13 @@ function renderPayer() {
   elements.payerCity.value = state.payer.city || '';
 }
 
-function generateTestBarcode() {
+async function generateTestBarcode() {
   elements.barcodeError.classList.add('hidden');
   elements.barcodeBox.classList.add('hidden');
   try {
+    // Generator barkoda učitava se tek kad ga korisnik zatraži. Njegov eventualni
+    // kvar zato ne može zaustaviti spremanje očitanja i uvoz sigurnosne kopije.
+    const bwipjs = await import('./vendor/bwip-js-min.js');
     const payload = buildHub3Payload({
       amount: 13.97,
       payerName: state.payer.name,
