@@ -39,9 +39,13 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Instaliraj ovisnosti i izradi release
+      - name: Instaliraj ovisnosti i pokreni testove
         run: |
           npm ci
+          npm test
+
+      - name: Izradi Android release
+        run: |
           npm run cap:sync
           cd android
           ./gradlew assembleRelease
