@@ -21,8 +21,6 @@ export function calculateBill(vtKwh, ntKwh, rates = DEFAULT_RATES, months = 1) {
   const periodMonths = Math.max(0, Number(months) || 0);
   const totalKwh = vt + nt;
 
-  // HEP na računu najprije zaokružuje svaki tarifni redak na cent,
-  // a tek zatim zbraja stavke. To je važno za potpuno podudaranje izračuna.
   const energy = money(vt * rates.energyVt) + money(nt * rates.energyNt);
   const transmission = money(vt * rates.transmissionVt) + money(nt * rates.transmissionNt);
   const distribution = money(vt * rates.distributionVt) + money(nt * rates.distributionNt);
@@ -32,20 +30,7 @@ export function calculateBill(vtKwh, ntKwh, rates = DEFAULT_RATES, months = 1) {
   const subtotal = money(energy + transmission + distribution + renewable + supply + metering);
   const vat = money(subtotal * (rates.vatRate / 100));
 
-  return {
-    vt,
-    nt,
-    totalKwh,
-    energy,
-    transmission,
-    distribution,
-    renewable,
-    supply,
-    metering,
-    subtotal,
-    vat,
-    total: money(subtotal + vat)
-  };
+  return { vt, nt, totalKwh, energy, transmission, distribution, renewable, supply, metering, subtotal, vat, total: money(subtotal + vat) };
 }
 
 export function monthsBetween(startDate, endDate) {
@@ -64,12 +49,7 @@ export function enrichReadings(readings, rates = DEFAULT_RATES) {
     const vt = reading.vt - previous.vt;
     const nt = reading.nt - previous.nt;
     const months = monthsBetween(previous.date, reading.date);
-    return {
-      ...reading,
-      usage: { vt, nt, total: vt + nt },
-      bill: calculateBill(vt, nt, rates, months),
-      months
-    };
+    return { ...reading, usage: { vt, nt, total: vt + nt }, bill: calculateBill(vt, nt, rates, months), months };
   });
 }
 
@@ -86,14 +66,39 @@ export function validateReading(candidate, readings, editingId = null) {
     return 'Za taj datum već postoji očitanje. Uredi postojeći zapis.';
   }
 
+  // Novi unos uvijek mora nastaviti kronološki niz. Uređivanje postojećeg
+  // zapisa i dalje smije ostati između susjednih zapisa, uz kontrolu stanja.
+  if (!editingId && others.length) {
+    const latest = others.at(-1);
+    if (candidate.date <= latest.date) {
+      return `Datum mora biti noviji od zadnjeg očitanja (${formatDate(latest.date)}).`;
+    }
+    if (candidate.vt < latest.vt) {
+      return `VT ne može biti manji od zadnjeg stanja (${latest.vt} kWh).`;
+    }
+    if (candidate.nt < latest.nt) {
+      return `NT ne može biti manji od zadnjeg stanja (${latest.nt} kWh).`;
+    }
+    if (candidate.vt === latest.vt && candidate.nt === latest.nt) {
+      return 'Novo očitanje mora imati veću vrijednost barem jedne tarife (VT ili NT).';
+    }
+    return null;
+  }
+
   const previous = [...others].reverse().find((item) => item.date < candidate.date);
   const next = others.find((item) => item.date > candidate.date);
 
   if (previous && (candidate.vt < previous.vt || candidate.nt < previous.nt)) {
     return `Stanje ne može biti manje od prethodnog očitanja (${formatDate(previous.date)}).`;
   }
+  if (previous && candidate.vt === previous.vt && candidate.nt === previous.nt) {
+    return `Očitanje ne može biti potpuno jednako prethodnom (${formatDate(previous.date)}).`;
+  }
   if (next && (candidate.vt > next.vt || candidate.nt > next.nt)) {
     return `Stanje ne može biti veće od sljedećeg očitanja (${formatDate(next.date)}).`;
+  }
+  if (next && candidate.vt === next.vt && candidate.nt === next.nt) {
+    return `Očitanje ne može biti potpuno jednako sljedećem (${formatDate(next.date)}).`;
   }
   return null;
 }
