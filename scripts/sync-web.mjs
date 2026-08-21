@@ -6,6 +6,7 @@ const webFiles = [
   'styles.css',
   'app.js',
   'calc.js',
+  'hub3.js',
   'manifest.webmanifest',
   'sw.js',
   'icon.svg'
