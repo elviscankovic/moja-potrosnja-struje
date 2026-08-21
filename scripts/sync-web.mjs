@@ -21,4 +21,5 @@ for (const file of webFiles) {
 }
 
 // Lokalna ESM verzija generatora barkoda: nema CDN-a ni mrežnog slanja podataka.
-cpSync('node_modules/@bwip-js/browser/dist/bwip-js-min.js', 'www/vendor/bwip-js-min.js');
+// @bwip-js/browser isporučuje browser ESM kao dist/bwip-js.mjs.
+cpSync('node_modules/@bwip-js/browser/dist/bwip-js.mjs', 'www/vendor/bwip-js-min.js');
