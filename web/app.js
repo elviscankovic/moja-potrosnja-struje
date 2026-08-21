@@ -384,21 +384,56 @@ document.querySelector('#exportBtn').addEventListener('click', async () => {
 
 document.querySelector('#importInput').addEventListener('change', async (event) => {
   const file = event.target.files?.[0];
-  event.target.value = '';
-  if (!file) return;
+
+  if (!file) {
+    showToast('Datoteka nije odabrana.');
+    return;
+  }
+
   try {
-    const imported = JSON.parse(await file.text());
-    if (!Array.isArray(imported.readings) || !imported.rates) throw new Error('Invalid data');
-    if (!window.confirm(`Uvesti ${imported.readings.length} očitanja? Trenutačni podaci bit će zamijenjeni.`)) return;
+    let text;
+
+    if (typeof file.text === 'function') {
+      text = await file.text();
+    } else {
+      text = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Datoteku nije moguće pročitati.'));
+        reader.readAsText(file);
+      });
+    }
+
+    if (!text || typeof text !== 'string') {
+      throw new Error('Datoteka je prazna ili je nije moguće pročitati.');
+    }
+
+    const imported = JSON.parse(text);
+
+    if (!imported || !Array.isArray(imported.readings) || !imported.rates) {
+      throw new Error('JSON ne sadrži valjanu sigurnosnu kopiju.');
+    }
+
+    if (!window.confirm(
+      `Uvesti ${imported.readings.length} očitanja? Trenutačni podaci bit će zamijenjeni.`
+    )) {
+      return;
+    }
+
     state.readings = imported.readings;
     state.rates = { ...DEFAULT_RATES, ...imported.rates };
     state.payer = { ...EMPTY_PAYER, ...(imported.payer || {}) };
+
     saveState();
     render();
     resetForm();
-    showToast('Podaci su uspješno uvezeni.');
-  } catch {
-    showToast('Datoteka nije ispravna sigurnosna kopija.');
+
+    showToast(`Uspješno uvezeno ${imported.readings.length} očitanja.`);
+  } catch (error) {
+    console.error('Greška pri uvozu sigurnosne kopije:', error);
+    showToast(error?.message || 'Sigurnosnu kopiju nije moguće uvesti.');
+  } finally {
+    event.target.value = '';
   }
 });
 
