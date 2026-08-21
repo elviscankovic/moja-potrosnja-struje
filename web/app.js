@@ -2,10 +2,427 @@ import { DEFAULT_RATES, enrichReadings, formatDate, validateReading } from './ca
 import { buildHub3Payload } from './hub3.js';
 import bwipjs from './vendor/bwip-js-min.js';
 
-const STORAGE_KEY='moja-potrosnja-struje-v1';const EMPTY_PAYER=Object.freeze({name:'',address:'',postalCode:'',city:''});const state=loadState();const IS_NATIVE=Boolean(window.Capacitor?.isNativePlatform?.());let deferredInstallPrompt=null;let toastTimer=null;
-const elements={form:document.querySelector('#readingForm'),editingId:document.querySelector('#editingId'),date:document.querySelector('#readingDate'),vt:document.querySelector('#readingVt'),nt:document.querySelector('#readingNt'),note:document.querySelector('#readingNote'),error:document.querySelector('#formError'),saveBtn:document.querySelector('#saveReadingBtn'),cancelBtn:document.querySelector('#cancelEditBtn'),historyBody:document.querySelector('#historyBody'),emptyState:document.querySelector('#emptyState'),readingCount:document.querySelector('#readingCount'),chart:document.querySelector('#chart'),toast:document.querySelector('#toast'),installBtn:document.querySelector('#installBtn'),payerForm:document.querySelector('#payerForm'),payerName:document.querySelector('#payerName'),payerAddress:document.querySelector('#payerAddress'),payerPostalCode:document.querySelector('#payerPostalCode'),payerCity:document.querySelector('#payerCity'),generateTestBarcodeBtn:document.querySelector('#generateTestBarcodeBtn'),barcodeError:document.querySelector('#barcodeError'),barcodeBox:document.querySelector('#barcodeBox'),paymentBarcode:document.querySelector('#paymentBarcode')};const rateIds=Object.keys(DEFAULT_RATES);
-function loadState(){try{const s=JSON.parse(localStorage.getItem(STORAGE_KEY));if(!s||!Array.isArray(s.readings))throw 0;return{readings:s.readings,rates:{...DEFAULT_RATES,...(s.rates||{})},payer:{...EMPTY_PAYER,...(s.payer||{})}}}catch{return{readings:[],rates:{...DEFAULT_RATES},payer:{...EMPTY_PAYER}}}}function saveState(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}function uid(){return crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random().toString(16).slice(2)}`}function number(v,d=2){return new Intl.NumberFormat('hr-HR',{maximumFractionDigits:d}).format(v)}function euro(v){return new Intl.NumberFormat('hr-HR',{style:'currency',currency:'EUR'}).format(v)}function today(){const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`}function showToast(m){clearTimeout(toastTimer);elements.toast.textContent=m;elements.toast.classList.remove('hidden');toastTimer=setTimeout(()=>elements.toast.classList.add('hidden'),2800)}function showError(m){elements.error.textContent=m;elements.error.classList.toggle('hidden',!m)}function resetForm(){elements.form.reset();elements.editingId.value='';elements.date.value=today();elements.saveBtn.textContent='Spremi očitanje';elements.cancelBtn.classList.add('hidden');showError('')}function escapeHtml(v){const d=document.createElement('div');d.textContent=v;return d.innerHTML}
-function render(){const e=enrichReadings(state.readings,state.rates);renderSummary(e);renderHistory(e);renderChart(e);renderRates();renderPayer()}function renderSummary(r){const p=r.filter(i=>i.usage),l=p.at(-1);document.querySelector('#lastConsumption').textContent=l?`${number(l.usage.total)} kWh`:'—';document.querySelector('#lastCost').textContent=l?euro(l.bill.total):'—';document.querySelector('#lastPeriod').textContent=l?`${formatDate(r.at(-2).date)} – ${formatDate(l.date)}`:'Dodaj dva očitanja';if(p.length){const m=p.reduce((s,i)=>s+i.months,0),a=p.reduce((s,i)=>s+i.usage.total,0)/m;document.querySelector('#averageConsumption').textContent=`${number(a)} kWh`;document.querySelector('#averageInfo').textContent=`na temelju ${p.length} razdoblja`}else{document.querySelector('#averageConsumption').textContent='—';document.querySelector('#averageInfo').textContent='nema dovoljno podataka'}const y=String(new Date().getFullYear()),yp=p.filter(i=>i.date.startsWith(y)),yk=yp.reduce((s,i)=>s+i.usage.total,0),ye=yp.reduce((s,i)=>s+i.bill.total,0);document.querySelector('#yearConsumption').textContent=yp.length?`${number(yk)} kWh`:'—';document.querySelector('#yearCost').textContent=yp.length?`procjena ${euro(ye)}`:'nema podataka';const b=document.querySelector('#billPanel');b.classList.toggle('hidden',!l);if(l){const prev=r.at(-2);document.querySelector('#billPeriod').textContent=`${formatDate(prev.date)} – ${formatDate(l.date)}`;for(const[k,id]of[['energy','billEnergy'],['transmission','billTransmission'],['distribution','billDistribution'],['renewable','billRenewable'],['subtotal','billSubtotal'],['vat','billVat'],['total','billTotal']])document.querySelector(`#${id}`).textContent=euro(l.bill[k]);document.querySelector('#billFixed').textContent=euro(l.bill.supply+l.bill.metering)}}
-function renderHistory(r){elements.historyBody.innerHTML='';elements.emptyState.classList.toggle('hidden',r.length>0);elements.readingCount.textContent=`${r.length} ${r.length===1?'očitanje':'očitanja'}`;[...r].reverse().forEach(i=>{const row=document.createElement('tr'),u=i.usage?`<strong>${number(i.usage.total)} kWh</strong><small>VT ${number(i.usage.vt)} · NT ${number(i.usage.nt)}</small>`:'<span class="baseline">Početno stanje</span>',c=i.bill?`<strong>${euro(i.bill.total)}</strong><small>${i.months} mj.</small>`:'—';row.innerHTML=`<td><strong>${formatDate(i.date)}</strong>${i.note?`<small>${escapeHtml(i.note)}</small>`:''}</td><td>VT ${number(i.vt)}<small>NT ${number(i.nt)}</small></td><td>${u}</td><td>${c}</td><td class="row-actions"><button class="icon-button edit-button" data-id="${i.id}">Uredi</button><button class="icon-button danger delete-button" data-id="${i.id}">Obriši</button></td>`;elements.historyBody.append(row)})}function renderChart(r){const p=r.filter(i=>i.usage).slice(-12);elements.chart.innerHTML='';if(!p.length){elements.chart.innerHTML='<p class="chart-empty">Graf će se pojaviti nakon drugog očitanja.</p>';return}const max=Math.max(...p.map(i=>i.usage.total),1);p.forEach(i=>{const c=document.createElement('div');c.className='chart-column';c.innerHTML=`<div class="chart-value">${number(i.usage.total,0)}</div><div class="bar"><div class="bar-part bar-vt" style="height:${i.usage.vt/max*100}%"></div><div class="bar-part bar-nt" style="height:${i.usage.nt/max*100}%"></div></div><div class="chart-label">${new Intl.DateTimeFormat('hr-HR',{month:'short',year:'2-digit'}).format(new Date(`${i.date}T12:00:00`))}</div>`;elements.chart.append(c)})}function renderRates(){rateIds.forEach(id=>{const x=document.querySelector(`#${id}`);if(x&&document.activeElement!==x)x.value=state.rates[id]})}function renderPayer(){elements.payerName.value=state.payer.name||'';elements.payerAddress.value=state.payer.address||'';elements.payerPostalCode.value=state.payer.postalCode||'';elements.payerCity.value=state.payer.city||''}
-elements.generateTestBarcodeBtn.addEventListener('click',()=>{elements.barcodeError.classList.add('hidden');elements.barcodeBox.classList.add('hidden');try{const payload=buildHub3Payload({amount:13.97,payerName:state.payer.name,payerAddress:state.payer.address,payerCity:`${state.payer.postalCode} ${state.payer.city}`.trim(),receiverName:'HEP ELEKTRA D.O.O.',receiverAddress:'ULICA GRADA VUKOVARA 37',receiverCity:'10000 ZAGREB',iban:'HR4924070001500325331',model:'HR01',reference:'2201425014-2609005-4',purposeCode:'',description:'UGOVORNI RACUN 2201425014'});bwipjs.toCanvas(elements.paymentBarcode,{bcid:'pdf417',text:payload,columns:9,eclevel:4,scale:2,height:3,includetext:false});elements.barcodeBox.classList.remove('hidden');elements.barcodeBox.scrollIntoView({behavior:'smooth',block:'center'})}catch(error){elements.barcodeError.textContent=error?.message||'Barkod nije moguće generirati.';elements.barcodeError.classList.remove('hidden')}});
-elements.form.addEventListener('submit',e=>{e.preventDefault();const id=elements.editingId.value||null,c={id:id||uid(),date:elements.date.value,vt:Number(elements.vt.value),nt:Number(elements.nt.value),note:elements.note.value.trim()},err=validateReading(c,state.readings,id);if(err)return showError(err);if(id)state.readings[state.readings.findIndex(i=>i.id===id)]=c;else state.readings.push(c);state.readings.sort((a,b)=>a.date.localeCompare(b.date));saveState();render();resetForm();showToast(id?'Očitanje je izmijenjeno.':'Očitanje je spremljeno.')});elements.cancelBtn.addEventListener('click',resetForm);elements.historyBody.addEventListener('click',e=>{const b=e.target.closest('button[data-id]');if(!b)return;const i=state.readings.find(r=>r.id===b.dataset.id);if(!i)return;if(b.classList.contains('edit-button')){elements.editingId.value=i.id;elements.date.value=i.date;elements.vt.value=i.vt;elements.nt.value=i.nt;elements.note.value=i.note||'';elements.saveBtn.textContent='Spremi izmjene';elements.cancelBtn.classList.remove('hidden');return}if(b.classList.contains('delete-button')&&window.confirm(`Obrisati očitanje od ${formatDate(i.date)}?`)){state.readings=state.readings.filter(r=>r.id!==i.id);saveState();render();resetForm()}});document.querySelector('#settingsForm').addEventListener('submit',e=>{e.preventDefault();const n={};for(const id of rateIds){const v=Number(document.querySelector(`#${id}`).value);if(!Number.isFinite(v)||v<0)return showToast('Provjeri unesene cijene.');n[id]=v}state.rates=n;saveState();render();showToast('Cijene su spremljene.')});document.querySelector('#resetRatesBtn').addEventListener('click',()=>{if(window.confirm('Vratiti zadane cijene?')){state.rates={...DEFAULT_RATES};saveState();render()}});elements.payerForm.addEventListener('submit',e=>{e.preventDefault();const p={name:elements.payerName.value.trim(),address:elements.payerAddress.value.trim(),postalCode:elements.payerPostalCode.value.trim(),city:elements.payerCity.value.trim()};if(!p.name||!p.address||!p.postalCode||!p.city)return showToast('Popuni sve podatke platitelja.');state.payer=p;saveState();showToast('Podaci platitelja su spremljeni.')});document.querySelector('#exportBtn').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({version:2,exportedAt:new Date().toISOString(),...state},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`potrosnja-struje-${today()}.json`;a.click();URL.revokeObjectURL(a.href)});document.querySelector('#importInput').addEventListener('change',async e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;try{const x=JSON.parse(await f.text());if(!Array.isArray(x.readings)||!x.rates)throw 0;if(!window.confirm(`Uvesti ${x.readings.length} očitanja?`))return;state.readings=x.readings;state.rates={...DEFAULT_RATES,...x.rates};state.payer={...EMPTY_PAYER,...(x.payer||{})};saveState();render();resetForm()}catch{showToast('Datoteka nije ispravna sigurnosna kopija.')}});document.querySelector('#printBtn').addEventListener('click',()=>window.print());if('serviceWorker'in navigator&&!IS_NATIVE&&location.protocol.startsWith('http'))window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));resetForm();render();
+const STORAGE_KEY = 'moja-potrosnja-struje-v1';
+const EMPTY_PAYER = Object.freeze({ name: '', address: '', postalCode: '', city: '' });
+const state = loadState();
+const IS_NATIVE = Boolean(window.Capacitor?.isNativePlatform?.());
+let deferredInstallPrompt = null;
+let toastTimer = null;
+
+const elements = {
+  form: document.querySelector('#readingForm'),
+  editingId: document.querySelector('#editingId'),
+  date: document.querySelector('#readingDate'),
+  vt: document.querySelector('#readingVt'),
+  nt: document.querySelector('#readingNt'),
+  note: document.querySelector('#readingNote'),
+  error: document.querySelector('#formError'),
+  saveBtn: document.querySelector('#saveReadingBtn'),
+  cancelBtn: document.querySelector('#cancelEditBtn'),
+  historyBody: document.querySelector('#historyBody'),
+  emptyState: document.querySelector('#emptyState'),
+  readingCount: document.querySelector('#readingCount'),
+  chart: document.querySelector('#chart'),
+  toast: document.querySelector('#toast'),
+  installBtn: document.querySelector('#installBtn'),
+  payerForm: document.querySelector('#payerForm'),
+  payerName: document.querySelector('#payerName'),
+  payerAddress: document.querySelector('#payerAddress'),
+  payerPostalCode: document.querySelector('#payerPostalCode'),
+  payerCity: document.querySelector('#payerCity'),
+  generateTestBarcodeBtn: document.querySelector('#generateTestBarcodeBtn'),
+  barcodeError: document.querySelector('#barcodeError'),
+  barcodeBox: document.querySelector('#barcodeBox'),
+  paymentBarcode: document.querySelector('#paymentBarcode')
+};
+
+const rateIds = Object.keys(DEFAULT_RATES);
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!saved || !Array.isArray(saved.readings)) throw new Error('Invalid state');
+    return {
+      readings: saved.readings,
+      rates: { ...DEFAULT_RATES, ...(saved.rates || {}) },
+      payer: { ...EMPTY_PAYER, ...(saved.payer || {}) }
+    };
+  } catch {
+    return { readings: [], rates: { ...DEFAULT_RATES }, payer: { ...EMPTY_PAYER } };
+  }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function uid() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function number(value, maximumFractionDigits = 2) {
+  return new Intl.NumberFormat('hr-HR', { maximumFractionDigits }).format(value);
+}
+
+function euro(value) {
+  return new Intl.NumberFormat('hr-HR', { style: 'currency', currency: 'EUR' }).format(value);
+}
+
+function today() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function showToast(message) {
+  clearTimeout(toastTimer);
+  elements.toast.textContent = message;
+  elements.toast.classList.remove('hidden');
+  toastTimer = setTimeout(() => elements.toast.classList.add('hidden'), 2800);
+}
+
+function showError(message) {
+  elements.error.textContent = message;
+  elements.error.classList.toggle('hidden', !message);
+}
+
+function resetForm() {
+  elements.form.reset();
+  elements.editingId.value = '';
+  elements.date.value = today();
+  elements.saveBtn.textContent = 'Spremi očitanje';
+  elements.cancelBtn.classList.add('hidden');
+  showError('');
+}
+
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = value;
+  return div.innerHTML;
+}
+
+function render() {
+  const enriched = enrichReadings(state.readings, state.rates);
+  renderSummary(enriched);
+  renderHistory(enriched);
+  renderChart(enriched);
+  renderRates();
+  renderPayer();
+}
+
+function renderSummary(readings) {
+  const periods = readings.filter((item) => item.usage);
+  const latest = periods.at(-1);
+
+  document.querySelector('#lastConsumption').textContent = latest ? `${number(latest.usage.total)} kWh` : '—';
+  document.querySelector('#lastCost').textContent = latest ? euro(latest.bill.total) : '—';
+  document.querySelector('#lastPeriod').textContent = latest
+    ? `${formatDate(readings.at(-2).date)} – ${formatDate(latest.date)}`
+    : 'Dodaj dva očitanja';
+
+  if (periods.length) {
+    const totalMonths = periods.reduce((sum, item) => sum + item.months, 0);
+    const average = periods.reduce((sum, item) => sum + item.usage.total, 0) / totalMonths;
+    document.querySelector('#averageConsumption').textContent = `${number(average)} kWh`;
+    document.querySelector('#averageInfo').textContent = `na temelju ${periods.length} razdoblja`;
+  } else {
+    document.querySelector('#averageConsumption').textContent = '—';
+    document.querySelector('#averageInfo').textContent = 'nema dovoljno podataka';
+  }
+
+  const currentYear = String(new Date().getFullYear());
+  const yearPeriods = periods.filter((item) => item.date.startsWith(currentYear));
+  const yearKwh = yearPeriods.reduce((sum, item) => sum + item.usage.total, 0);
+  const yearEuro = yearPeriods.reduce((sum, item) => sum + item.bill.total, 0);
+  document.querySelector('#yearConsumption').textContent = yearPeriods.length ? `${number(yearKwh)} kWh` : '—';
+  document.querySelector('#yearCost').textContent = yearPeriods.length ? `procjena ${euro(yearEuro)}` : 'nema podataka';
+
+  const billPanel = document.querySelector('#billPanel');
+  billPanel.classList.toggle('hidden', !latest);
+  if (latest) {
+    const previous = readings.at(-2);
+    document.querySelector('#billPeriod').textContent = `${formatDate(previous.date)} – ${formatDate(latest.date)}`;
+    document.querySelector('#billEnergy').textContent = euro(latest.bill.energy);
+    document.querySelector('#billTransmission').textContent = euro(latest.bill.transmission);
+    document.querySelector('#billDistribution').textContent = euro(latest.bill.distribution);
+    document.querySelector('#billRenewable').textContent = euro(latest.bill.renewable);
+    document.querySelector('#billFixed').textContent = euro(latest.bill.supply + latest.bill.metering);
+    document.querySelector('#billSubtotal').textContent = euro(latest.bill.subtotal);
+    document.querySelector('#billVat').textContent = euro(latest.bill.vat);
+    document.querySelector('#billTotal').textContent = euro(latest.bill.total);
+  }
+}
+
+function renderHistory(readings) {
+  elements.historyBody.innerHTML = '';
+  elements.emptyState.classList.toggle('hidden', readings.length > 0);
+  elements.readingCount.textContent = `${readings.length} ${readings.length === 1 ? 'očitanje' : 'očitanja'}`;
+
+  [...readings].reverse().forEach((item) => {
+    const row = document.createElement('tr');
+    const usage = item.usage
+      ? `<strong>${number(item.usage.total)} kWh</strong><small>VT ${number(item.usage.vt)} · NT ${number(item.usage.nt)}</small>`
+      : '<span class="baseline">Početno stanje</span>';
+    const cost = item.bill ? `<strong>${euro(item.bill.total)}</strong><small>${item.months} mj.</small>` : '—';
+    row.innerHTML = `
+      <td data-label="Datum"><div class="cell-content"><strong>${formatDate(item.date)}</strong>${item.note ? `<small>${escapeHtml(item.note)}</small>` : ''}</div></td>
+      <td data-label="Stanje"><div class="cell-content"><span>VT ${number(item.vt)}</span><small>NT ${number(item.nt)}</small></div></td>
+      <td data-label="Potrošnja"><div class="cell-content">${usage}</div></td>
+      <td data-label="Procjena"><div class="cell-content">${cost}</div></td>
+      <td class="row-actions">
+        <button class="icon-button edit-button" data-id="${item.id}" type="button" aria-label="Uredi očitanje">Uredi</button>
+        <button class="icon-button danger delete-button" data-id="${item.id}" type="button" aria-label="Obriši očitanje">Obriši</button>
+      </td>`;
+    elements.historyBody.append(row);
+  });
+}
+
+function renderChart(readings) {
+  const periods = readings.filter((item) => item.usage).slice(-12);
+  elements.chart.innerHTML = '';
+  if (!periods.length) {
+    elements.chart.innerHTML = '<p class="chart-empty">Graf će se pojaviti nakon drugog očitanja.</p>';
+    return;
+  }
+  const max = Math.max(...periods.map((item) => item.usage.total), 1);
+  periods.forEach((item) => {
+    const column = document.createElement('div');
+    column.className = 'chart-column';
+    const vtHeight = (item.usage.vt / max) * 100;
+    const ntHeight = (item.usage.nt / max) * 100;
+    column.innerHTML = `
+      <div class="chart-value">${number(item.usage.total, 0)}</div>
+      <div class="bar" title="${formatDate(item.date)}: ${number(item.usage.total)} kWh">
+        <div class="bar-part bar-vt" style="height:${vtHeight}%"></div>
+        <div class="bar-part bar-nt" style="height:${ntHeight}%"></div>
+      </div>
+      <div class="chart-label">${new Intl.DateTimeFormat('hr-HR', { month: 'short', year: '2-digit' }).format(new Date(`${item.date}T12:00:00`))}</div>`;
+    elements.chart.append(column);
+  });
+}
+
+function renderRates() {
+  rateIds.forEach((id) => {
+    const input = document.querySelector(`#${id}`);
+    if (input && document.activeElement !== input) input.value = state.rates[id];
+  });
+}
+
+function renderPayer() {
+  elements.payerName.value = state.payer.name || '';
+  elements.payerAddress.value = state.payer.address || '';
+  elements.payerPostalCode.value = state.payer.postalCode || '';
+  elements.payerCity.value = state.payer.city || '';
+}
+
+function generateTestBarcode() {
+  elements.barcodeError.classList.add('hidden');
+  elements.barcodeBox.classList.add('hidden');
+  try {
+    const payload = buildHub3Payload({
+      amount: 13.97,
+      payerName: state.payer.name,
+      payerAddress: state.payer.address,
+      payerCity: `${state.payer.postalCode} ${state.payer.city}`.trim(),
+      receiverName: 'HEP ELEKTRA D.O.O.',
+      receiverAddress: 'ULICA GRADA VUKOVARA 37',
+      receiverCity: '10000 ZAGREB',
+      iban: 'HR4924070001500325331',
+      model: 'HR01',
+      reference: '2201425014-2609005-4',
+      purposeCode: '',
+      description: 'UGOVORNI RACUN 2201425014'
+    });
+
+    bwipjs.toCanvas(elements.paymentBarcode, {
+      bcid: 'pdf417',
+      text: payload,
+      columns: 9,
+      eclevel: 4,
+      scale: 2,
+      height: 3,
+      includetext: false
+    });
+    elements.barcodeBox.classList.remove('hidden');
+    elements.barcodeBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (error) {
+    elements.barcodeError.textContent = error?.message || 'Barkod nije moguće generirati.';
+    elements.barcodeError.classList.remove('hidden');
+  }
+}
+
+elements.generateTestBarcodeBtn.addEventListener('click', generateTestBarcode);
+
+elements.form.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const editingId = elements.editingId.value || null;
+  const candidate = {
+    id: editingId || uid(),
+    date: elements.date.value,
+    vt: Number(elements.vt.value),
+    nt: Number(elements.nt.value),
+    note: elements.note.value.trim()
+  };
+  const error = validateReading(candidate, state.readings, editingId);
+  if (error) return showError(error);
+
+  if (editingId) {
+    const index = state.readings.findIndex((item) => item.id === editingId);
+    state.readings[index] = candidate;
+  } else {
+    state.readings.push(candidate);
+  }
+  state.readings.sort((a, b) => a.date.localeCompare(b.date));
+  saveState();
+  render();
+  resetForm();
+  showToast(editingId ? 'Očitanje je izmijenjeno.' : 'Očitanje je spremljeno.');
+});
+
+elements.cancelBtn.addEventListener('click', resetForm);
+
+elements.historyBody.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-id]');
+  if (!button) return;
+  const item = state.readings.find((reading) => reading.id === button.dataset.id);
+  if (!item) return;
+
+  if (button.classList.contains('edit-button')) {
+    elements.editingId.value = item.id;
+    elements.date.value = item.date;
+    elements.vt.value = item.vt;
+    elements.nt.value = item.nt;
+    elements.note.value = item.note || '';
+    elements.saveBtn.textContent = 'Spremi izmjene';
+    elements.cancelBtn.classList.remove('hidden');
+    showError('');
+    document.querySelector('.entry-panel').scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+
+  if (button.classList.contains('delete-button')) {
+    if (!window.confirm(`Obrisati očitanje od ${formatDate(item.date)}?`)) return;
+    state.readings = state.readings.filter((reading) => reading.id !== item.id);
+    saveState();
+    render();
+    resetForm();
+    showToast('Očitanje je obrisano.');
+  }
+});
+
+document.querySelector('#settingsForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const nextRates = {};
+  for (const id of rateIds) {
+    const value = Number(document.querySelector(`#${id}`).value);
+    if (!Number.isFinite(value) || value < 0) return showToast('Provjeri unesene cijene.');
+    nextRates[id] = value;
+  }
+  state.rates = nextRates;
+  saveState();
+  render();
+  showToast('Cijene su spremljene i izračuni osvježeni.');
+});
+
+document.querySelector('#resetRatesBtn').addEventListener('click', () => {
+  if (!window.confirm('Vratiti sve tarifne stavke na zadane vrijednosti?')) return;
+  state.rates = { ...DEFAULT_RATES };
+  saveState();
+  render();
+  showToast('Vraćene su zadane cijene.');
+});
+
+elements.payerForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const payer = {
+    name: elements.payerName.value.trim(),
+    address: elements.payerAddress.value.trim(),
+    postalCode: elements.payerPostalCode.value.trim(),
+    city: elements.payerCity.value.trim()
+  };
+  if (!payer.name || !payer.address || !payer.postalCode || !payer.city) {
+    return showToast('Popuni sve podatke platitelja.');
+  }
+  state.payer = payer;
+  saveState();
+  showToast('Podaci platitelja su spremljeni.');
+});
+
+document.querySelector('#exportBtn').addEventListener('click', async () => {
+  const fileName = `potrosnja-struje-${today()}.json`;
+  const contents = JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), ...state }, null, 2);
+
+  if (IS_NATIVE && window.Capacitor?.Plugins?.Filesystem && window.Capacitor?.Plugins?.Share) {
+    try {
+      const saved = await window.Capacitor.Plugins.Filesystem.writeFile({
+        path: fileName,
+        data: contents,
+        directory: 'CACHE',
+        encoding: 'utf8'
+      });
+      await window.Capacitor.Plugins.Share.share({
+        title: 'Sigurnosna kopija potrošnje struje',
+        text: 'Sigurnosna kopija očitanja i postavki aplikacije Moja potrošnja struje.',
+        url: saved.uri,
+        dialogTitle: 'Spremi ili podijeli sigurnosnu kopiju'
+      });
+      showToast('Sigurnosna kopija je pripremljena.');
+      return;
+    } catch {
+      showToast('Sigurnosnu kopiju nije bilo moguće otvoriti za dijeljenje.');
+      return;
+    }
+  }
+
+  const blob = new Blob([contents], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast('Sigurnosna kopija je izvezena.');
+});
+
+document.querySelector('#importInput').addEventListener('change', async (event) => {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    const imported = JSON.parse(await file.text());
+    if (!Array.isArray(imported.readings) || !imported.rates) throw new Error('Invalid data');
+    if (!window.confirm(`Uvesti ${imported.readings.length} očitanja? Trenutačni podaci bit će zamijenjeni.`)) return;
+    state.readings = imported.readings;
+    state.rates = { ...DEFAULT_RATES, ...imported.rates };
+    state.payer = { ...EMPTY_PAYER, ...(imported.payer || {}) };
+    saveState();
+    render();
+    resetForm();
+    showToast('Podaci su uspješno uvezeni.');
+  } catch {
+    showToast('Datoteka nije ispravna sigurnosna kopija.');
+  }
+});
+
+document.querySelector('#printBtn').addEventListener('click', () => window.print());
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  elements.installBtn.classList.remove('hidden');
+});
+
+elements.installBtn.addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  elements.installBtn.classList.add('hidden');
+});
+
+window.addEventListener('appinstalled', () => showToast('Aplikacija je instalirana.'));
+
+if ('serviceWorker' in navigator && !IS_NATIVE && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+}
+
+resetForm();
+render();
