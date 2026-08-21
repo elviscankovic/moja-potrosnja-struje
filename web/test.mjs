@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { DEFAULT_RATES, calculateBill, enrichReadings, monthsBetween, validateReading } from './calc.js';
 import { amountToHub3, buildHub3Payload } from './hub3.js';
+import { parseBackup, readBackupFile } from './backup.js';
 
 const hepExample = calculateBill(325, 175, DEFAULT_RATES, 1);
 assert.equal(Number(hepExample.energy.toFixed(2)), 39.94);
@@ -75,4 +76,29 @@ assert.throws(() => buildHub3Payload({
   iban: 'HR123', model: 'HR01', reference: '1', description: 'TEST'
 }), /IBAN/);
 
-console.log('Svi testovi su prošli: HEP izračun, validacija očitanja i HUB3 struktura za 13,97 €.');
+const backupText = JSON.stringify({
+  version: 1,
+  exportedAt: '2026-08-20T16:26:04.914Z',
+  readings: [
+    { id: 'a', date: '2026-07-09', vt: 0, nt: 0, note: '' },
+    { id: 'b', date: '2026-08-01', vt: 498, nt: 149, note: '' }
+  ],
+  rates: DEFAULT_RATES
+});
+const parsedBackup = parseBackup(`\uFEFF${backupText}`);
+assert.equal(parsedBackup.version, 1);
+assert.equal(parsedBackup.readings.length, 2);
+assert.equal(parsedBackup.readings[1].vt, 498);
+assert.throws(() => parseBackup(''), /prazna/);
+assert.throws(() => parseBackup('{nije json}'), /ispravan JSON/);
+assert.throws(() => parseBackup('{"readings":[]}'), /valjanu sigurnosnu kopiju/);
+
+class TestFileReader {
+  readAsText(file) {
+    this.result = file.contents;
+    this.onload();
+  }
+}
+assert.equal(await readBackupFile({ contents: backupText }, TestFileReader), backupText);
+
+console.log('Svi testovi su prošli: HEP izračun, validacija očitanja, HUB3 struktura i Android JSON uvoz.');

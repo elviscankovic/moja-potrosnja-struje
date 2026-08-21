@@ -1,5 +1,6 @@
 import { DEFAULT_RATES, enrichReadings, formatDate, validateReading } from './calc.js';
 import { buildHub3Payload } from './hub3.js';
+import { parseBackup, readBackupFile } from './backup.js';
 import bwipjs from './vendor/bwip-js-min.js';
 
 const STORAGE_KEY = 'moja-potrosnja-struje-v1';
@@ -391,28 +392,7 @@ document.querySelector('#importInput').addEventListener('change', async (event) 
   }
 
   try {
-    let text;
-
-    if (typeof file.text === 'function') {
-      text = await file.text();
-    } else {
-      text = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(new Error('Datoteku nije moguće pročitati.'));
-        reader.readAsText(file);
-      });
-    }
-
-    if (!text || typeof text !== 'string') {
-      throw new Error('Datoteka je prazna ili je nije moguće pročitati.');
-    }
-
-    const imported = JSON.parse(text);
-
-    if (!imported || !Array.isArray(imported.readings) || !imported.rates) {
-      throw new Error('JSON ne sadrži valjanu sigurnosnu kopiju.');
-    }
+    const imported = parseBackup(await readBackupFile(file));
 
     if (!window.confirm(
       `Uvesti ${imported.readings.length} očitanja? Trenutačni podaci bit će zamijenjeni.`
