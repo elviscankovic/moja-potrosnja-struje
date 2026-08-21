@@ -1,11 +1,12 @@
 {
   "name": "moja-potrosnja-struje-android",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "private": true,
   "description": "Besplatna lokalna Android aplikacija za evidenciju potrošnje električne energije.",
   "license": "GPL-3.0-only",
   "scripts": {
+    "test": "node web/test.mjs",
     "sync:web": "node scripts/sync-web.mjs",
     "cap:sync": "npm run sync:web && npx cap sync android",
     "build:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug",
