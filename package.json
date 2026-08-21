@@ -12,6 +12,7 @@
     "build:release": "npm run cap:sync && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@bwip-js/browser": "^4.11.2",
     "@capacitor/android": "^7.4.3",
     "@capacitor/core": "^7.4.3",
     "@capacitor/filesystem": "^7.1.8",
