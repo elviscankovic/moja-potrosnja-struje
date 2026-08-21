@@ -2,6 +2,8 @@ name: Android release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -25,48 +27,66 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Odredi novu verziju
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_NAME="$GITHUB_REF_NAME"
+          else
+            TAG_NAME="v$(node -p "require('./package.json').version")"
+          fi
+          echo "TAG_NAME=$TAG_NAME" >> "$GITHUB_ENV"
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "SHOULD_RELEASE=false" >> "$GITHUB_ENV"
+            echo "Izdanje $TAG_NAME već postoji; nema ponovne objave."
+          else
+            echo "SHOULD_RELEASE=true" >> "$GITHUB_ENV"
+          fi
+
       - name: Postavi Java 21
+        if: env.SHOULD_RELEASE == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
       - name: Postavi Android alate
+        if: env.SHOULD_RELEASE == 'true'
         uses: android-actions/setup-android@v3
 
       - name: Postavi Android SDK 35
+        if: env.SHOULD_RELEASE == 'true'
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Instaliraj ovisnosti i pokreni testove
+        if: env.SHOULD_RELEASE == 'true'
         run: |
-          npm install --ignore-scripts
+          npm ci --ignore-scripts
           npm test
 
       - name: Izradi Android release
+        if: env.SHOULD_RELEASE == 'true'
         run: |
           npm run cap:sync
           cd android
           ./gradlew assembleRelease
 
       - name: Potpiši APK
-        if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
+        if: env.SHOULD_RELEASE == 'true' && env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
         run: |
           mkdir -p release
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release/release-key.jks
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk release/aligned.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks release/release-key.jks --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --out "release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk" release/aligned.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks release/release-key.jks --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --out "release/Moja_potrosnja_struje-${TAG_NAME}.apk" release/aligned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "release/Moja_potrosnja_struje-${TAG_NAME}.apk"
 
       - name: Objavi GitHub izdanje
-        if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
+        if: env.SHOULD_RELEASE == 'true' && env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          APK="release/Moja_potrosnja_struje-${GITHUB_REF_NAME}.apk"
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$APK" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" "$APK" --generate-notes
-          fi
+          APK="release/Moja_potrosnja_struje-${TAG_NAME}.apk"
+          gh release create "$TAG_NAME" "$APK" --target "$GITHUB_SHA" --generate-notes
