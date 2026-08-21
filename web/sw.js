@@ -1,4 +1,4 @@
-const CACHE = 'moja-potrosnja-v3';
+const CACHE = 'moja-potrosnja-v4';
 const ASSETS = ['./', './index.html', './o-aplikaciji.html', './styles.css', './app.js', './backup.js', './calc.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
