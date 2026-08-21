@@ -1,6 +1,9 @@
 import { DEFAULT_RATES, enrichReadings, formatDate, validateReading } from './calc.js';
+import { buildHub3Payload } from './hub3.js';
+import bwipjs from './vendor/bwip-js-min.js';
 
 const STORAGE_KEY = 'moja-potrosnja-struje-v1';
+const EMPTY_PAYER = Object.freeze({ name: '', address: '', postalCode: '', city: '' });
 const state = loadState();
 const IS_NATIVE = Boolean(window.Capacitor?.isNativePlatform?.());
 let deferredInstallPrompt = null;
@@ -21,7 +24,16 @@ const elements = {
   readingCount: document.querySelector('#readingCount'),
   chart: document.querySelector('#chart'),
   toast: document.querySelector('#toast'),
-  installBtn: document.querySelector('#installBtn')
+  installBtn: document.querySelector('#installBtn'),
+  payerForm: document.querySelector('#payerForm'),
+  payerName: document.querySelector('#payerName'),
+  payerAddress: document.querySelector('#payerAddress'),
+  payerPostalCode: document.querySelector('#payerPostalCode'),
+  payerCity: document.querySelector('#payerCity'),
+  generateTestBarcodeBtn: document.querySelector('#generateTestBarcodeBtn'),
+  barcodeError: document.querySelector('#barcodeError'),
+  barcodeBox: document.querySelector('#barcodeBox'),
+  paymentBarcode: document.querySelector('#paymentBarcode')
 };
 
 const rateIds = Object.keys(DEFAULT_RATES);
@@ -32,10 +44,11 @@ function loadState() {
     if (!saved || !Array.isArray(saved.readings)) throw new Error('Invalid state');
     return {
       readings: saved.readings,
-      rates: { ...DEFAULT_RATES, ...(saved.rates || {}) }
+      rates: { ...DEFAULT_RATES, ...(saved.rates || {}) },
+      payer: { ...EMPTY_PAYER, ...(saved.payer || {}) }
     };
   } catch {
-    return { readings: [], rates: { ...DEFAULT_RATES } };
+    return { readings: [], rates: { ...DEFAULT_RATES }, payer: { ...EMPTY_PAYER } };
   }
 }
 
@@ -81,12 +94,19 @@ function resetForm() {
   showError('');
 }
 
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = value;
+  return div.innerHTML;
+}
+
 function render() {
   const enriched = enrichReadings(state.readings, state.rates);
   renderSummary(enriched);
   renderHistory(enriched);
   renderChart(enriched);
   renderRates();
+  renderPayer();
 }
 
 function renderSummary(readings) {
@@ -103,7 +123,7 @@ function renderSummary(readings) {
     const totalMonths = periods.reduce((sum, item) => sum + item.months, 0);
     const average = periods.reduce((sum, item) => sum + item.usage.total, 0) / totalMonths;
     document.querySelector('#averageConsumption').textContent = `${number(average)} kWh`;
-    document.querySelector('#averageInfo').textContent = `na temelju ${periods.length} ${periods.length === 1 ? 'razdoblja' : 'razdoblja'}`;
+    document.querySelector('#averageInfo').textContent = `na temelju ${periods.length} razdoblja`;
   } else {
     document.querySelector('#averageConsumption').textContent = '—';
     document.querySelector('#averageInfo').textContent = 'nema dovoljno podataka';
@@ -135,7 +155,7 @@ function renderSummary(readings) {
 function renderHistory(readings) {
   elements.historyBody.innerHTML = '';
   elements.emptyState.classList.toggle('hidden', readings.length > 0);
-  elements.readingCount.textContent = `${readings.length} ${readings.length === 1 ? 'očitanje' : readings.length < 5 ? 'očitanja' : 'očitanja'}`;
+  elements.readingCount.textContent = `${readings.length} ${readings.length === 1 ? 'očitanje' : 'očitanja'}`;
 
   [...readings].reverse().forEach((item) => {
     const row = document.createElement('tr');
@@ -187,11 +207,50 @@ function renderRates() {
   });
 }
 
-function escapeHtml(value) {
-  const div = document.createElement('div');
-  div.textContent = value;
-  return div.innerHTML;
+function renderPayer() {
+  elements.payerName.value = state.payer.name || '';
+  elements.payerAddress.value = state.payer.address || '';
+  elements.payerPostalCode.value = state.payer.postalCode || '';
+  elements.payerCity.value = state.payer.city || '';
 }
+
+function generateTestBarcode() {
+  elements.barcodeError.classList.add('hidden');
+  elements.barcodeBox.classList.add('hidden');
+  try {
+    const payload = buildHub3Payload({
+      amount: 13.97,
+      payerName: state.payer.name,
+      payerAddress: state.payer.address,
+      payerCity: `${state.payer.postalCode} ${state.payer.city}`.trim(),
+      receiverName: 'HEP ELEKTRA D.O.O.',
+      receiverAddress: 'ULICA GRADA VUKOVARA 37',
+      receiverCity: '10000 ZAGREB',
+      iban: 'HR4924070001500325331',
+      model: 'HR01',
+      reference: '2201425014-2609005-4',
+      purposeCode: '',
+      description: 'UGOVORNI RACUN 2201425014'
+    });
+
+    bwipjs.toCanvas(elements.paymentBarcode, {
+      bcid: 'pdf417',
+      text: payload,
+      columns: 9,
+      eclevel: 4,
+      scale: 2,
+      height: 3,
+      includetext: false
+    });
+    elements.barcodeBox.classList.remove('hidden');
+    elements.barcodeBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (error) {
+    elements.barcodeError.textContent = error?.message || 'Barkod nije moguće generirati.';
+    elements.barcodeError.classList.remove('hidden');
+  }
+}
+
+elements.generateTestBarcodeBtn.addEventListener('click', generateTestBarcode);
 
 elements.form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -272,9 +331,25 @@ document.querySelector('#resetRatesBtn').addEventListener('click', () => {
   showToast('Vraćene su zadane cijene.');
 });
 
+elements.payerForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const payer = {
+    name: elements.payerName.value.trim(),
+    address: elements.payerAddress.value.trim(),
+    postalCode: elements.payerPostalCode.value.trim(),
+    city: elements.payerCity.value.trim()
+  };
+  if (!payer.name || !payer.address || !payer.postalCode || !payer.city) {
+    return showToast('Popuni sve podatke platitelja.');
+  }
+  state.payer = payer;
+  saveState();
+  showToast('Podaci platitelja su spremljeni.');
+});
+
 document.querySelector('#exportBtn').addEventListener('click', async () => {
   const fileName = `potrosnja-struje-${today()}.json`;
-  const contents = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), ...state }, null, 2);
+  const contents = JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), ...state }, null, 2);
 
   if (IS_NATIVE && window.Capacitor?.Plugins?.Filesystem && window.Capacitor?.Plugins?.Share) {
     try {
@@ -317,6 +392,7 @@ document.querySelector('#importInput').addEventListener('change', async (event) 
     if (!window.confirm(`Uvesti ${imported.readings.length} očitanja? Trenutačni podaci bit će zamijenjeni.`)) return;
     state.readings = imported.readings;
     state.rates = { ...DEFAULT_RATES, ...imported.rates };
+    state.payer = { ...EMPTY_PAYER, ...(imported.payer || {}) };
     saveState();
     render();
     resetForm();
