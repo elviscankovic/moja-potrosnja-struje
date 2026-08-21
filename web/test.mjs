@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { DEFAULT_RATES, calculateBill, enrichReadings, monthsBetween, validateReading } from './calc.js';
+import { amountToHub3, buildHub3Payload } from './hub3.js';
 
 const hepExample = calculateBill(325, 175, DEFAULT_RATES, 1);
 assert.equal(Number(hepExample.energy.toFixed(2)), 39.94);
@@ -22,19 +23,15 @@ assert.equal(enriched[0].usage, null);
 assert.equal(enriched[1].usage.total, 500);
 assert.equal(Number(enriched[1].bill.total.toFixed(2)), 85.76);
 
-// v1.0.2: novi unos mora nastaviti kronološki niz.
 assert.match(validateReading({ date: '2026-02-01', vt: 1200, nt: 600 }, readings), /Datum mora biti noviji/);
 assert.match(validateReading({ date: '2026-02-15', vt: 1400, nt: 700 }, readings), /već postoji/);
 assert.match(validateReading({ date: '2026-03-15', vt: 1324, nt: 700 }, readings), /VT ne može biti manji/);
 assert.match(validateReading({ date: '2026-03-15', vt: 1400, nt: 674 }, readings), /NT ne može biti manji/);
 assert.match(validateReading({ date: '2026-03-15', vt: 1325, nt: 675 }, readings), /veću vrijednost barem jedne tarife/);
-
-// Jedna tarifa smije ostati ista ako druga raste.
 assert.equal(validateReading({ date: '2026-03-15', vt: 1400, nt: 675 }, readings), null);
 assert.equal(validateReading({ date: '2026-03-15', vt: 1325, nt: 700 }, readings), null);
 assert.equal(validateReading({ date: '2026-03-15', vt: 1400, nt: 700 }, readings), null);
 
-// Uređivanje starog zapisa mora ostati između susjednih očitanja.
 const editReadings = [
   { id: 'a', date: '2026-01-15', vt: 1000, nt: 500 },
   { id: 'b', date: '2026-02-15', vt: 1200, nt: 600 },
@@ -44,4 +41,38 @@ assert.equal(validateReading({ id: 'b', date: '2026-02-15', vt: 1250, nt: 620 },
 assert.match(validateReading({ id: 'b', date: '2026-02-15', vt: 999, nt: 620 }, editReadings, 'b'), /manje od prethodnog/);
 assert.match(validateReading({ id: 'b', date: '2026-02-15', vt: 1450, nt: 620 }, editReadings, 'b'), /veće od sljedećeg/);
 
-console.log('Svi testovi su prošli. HEP kontrolni primjer: 500 kWh = 85,76 €. Validacija v1.0.2 je pokrivena testovima.');
+// HUB3: stvarni HEP primjer koristi se samo kao test strukture.
+assert.equal(amountToHub3(13.97), '000000000001397');
+const hub3 = buildHub3Payload({
+  amount: 13.97,
+  payerName: 'TESTNI KORISNIK',
+  payerAddress: 'TESTNA 1',
+  payerCity: '23000 ZADAR',
+  receiverName: 'HEP ELEKTRA D.O.O.',
+  receiverAddress: 'ULICA GRADA VUKOVARA 37',
+  receiverCity: '10000 ZAGREB',
+  iban: 'HR4924070001500325331',
+  model: 'HR01',
+  reference: '2201425014-2609005-4',
+  purposeCode: '',
+  description: 'UGOVORNI RACUN 2201425014'
+});
+const hub3Fields = hub3.trimEnd().split('\n');
+assert.equal(hub3Fields.length, 14);
+assert.equal(hub3Fields[0], 'HRVHUB30');
+assert.equal(hub3Fields[1], 'EUR');
+assert.equal(hub3Fields[2], '000000000001397');
+assert.equal(hub3Fields[6], 'HEP ELEKTRA D.O.O.');
+assert.equal(hub3Fields[9], 'HR4924070001500325331');
+assert.equal(hub3Fields[10], 'HR01');
+assert.equal(hub3Fields[11], '2201425014-2609005-4');
+assert.equal(hub3Fields[12], '');
+
+assert.throws(() => buildHub3Payload({ amount: 13.97 }), /Nedostaje podatak/);
+assert.throws(() => buildHub3Payload({
+  amount: 13.97, payerName: 'A', payerAddress: 'B', payerCity: 'C',
+  receiverName: 'D', receiverAddress: 'E', receiverCity: 'F',
+  iban: 'HR123', model: 'HR01', reference: '1', description: 'TEST'
+}), /IBAN/);
+
+console.log('Svi testovi su prošli: HEP izračun, validacija očitanja i HUB3 struktura za 13,97 €.');
