@@ -41,7 +41,7 @@ jobs:
 
       - name: Instaliraj ovisnosti i pokreni testove
         run: |
-          npm ci
+          npm install --ignore-scripts
           npm test
 
       - name: Izradi Android release
