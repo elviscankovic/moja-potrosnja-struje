@@ -13,12 +13,15 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.widget.Toast;
 
+import androidx.core.content.FileProvider;
+
 import com.getcapacitor.BridgeActivity;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -36,6 +39,7 @@ public class MainActivity extends BridgeActivity {
     private String pendingVersion;
     private long updateDownloadId = -1;
     private BroadcastReceiver downloadReceiver;
+    private File updateApkFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -162,6 +166,21 @@ public class MainActivity extends BridgeActivity {
     private void downloadUpdate() {
         if (pendingApkUrl == null || updateDownloadId != -1) return;
 
+        File downloadsDirectory = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        if (downloadsDirectory == null) {
+            Toast.makeText(this, "Nije moguće pripremiti datoteku ažuriranja.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        updateApkFile = new File(
+            downloadsDirectory,
+            "Moja_potrosnja_struje-v" + pendingVersion + ".apk"
+        );
+        if (updateApkFile.exists() && !updateApkFile.delete()) {
+            Toast.makeText(this, "Nije moguće zamijeniti staru datoteku ažuriranja.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(pendingApkUrl))
             .setTitle("Moja potrošnja struje " + pendingVersion)
             .setDescription("Preuzimanje ažuriranja")
@@ -170,12 +189,12 @@ public class MainActivity extends BridgeActivity {
             .setDestinationInExternalFilesDir(
                 this,
                 Environment.DIRECTORY_DOWNLOADS,
-                "Moja_potrosnja_struje-v" + pendingVersion + ".apk"
+                updateApkFile.getName()
             );
 
         DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-        updateDownloadId = manager.enqueue(request);
         registerDownloadReceiver(manager);
+        updateDownloadId = manager.enqueue(request);
         Toast.makeText(this, "Preuzimanje ažuriranja je pokrenuto.", Toast.LENGTH_SHORT).show();
     }
 
@@ -187,27 +206,55 @@ public class MainActivity extends BridgeActivity {
                 long completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
                 if (completedId != updateDownloadId) return;
 
-                Uri apkUri = manager.getUriForDownloadedFile(updateDownloadId);
+                DownloadManager.Query query = new DownloadManager.Query().setFilterById(updateDownloadId);
+                boolean downloadSucceeded = false;
+                try (android.database.Cursor cursor = manager.query(query)) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        int statusColumn = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                        downloadSucceeded = statusColumn >= 0
+                            && cursor.getInt(statusColumn) == DownloadManager.STATUS_SUCCESSFUL;
+                    }
+                }
                 unregisterDownloadReceiver();
                 updateDownloadId = -1;
 
-                if (apkUri == null) {
+                if (!downloadSucceeded || updateApkFile == null || !updateApkFile.exists()) {
                     Toast.makeText(MainActivity.this, "Ažuriranje nije bilo moguće preuzeti.", Toast.LENGTH_LONG).show();
                     return;
                 }
 
-                Intent installIntent = new Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(apkUri, "application/vnd.android.package-archive")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(installIntent);
+                openInstaller();
             }
         };
 
         IntentFilter filter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(downloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            // Obavijest šalje sistemski Download Manager, koji je zaseban proces/aplikacija.
+            registerReceiver(downloadReceiver, filter, Context.RECEIVER_EXPORTED);
         } else {
             registerReceiver(downloadReceiver, filter);
+        }
+    }
+
+    private void openInstaller() {
+        if (updateApkFile == null || !updateApkFile.exists()) return;
+
+        try {
+            Uri apkUri = FileProvider.getUriForFile(
+                this,
+                getPackageName() + ".fileprovider",
+                updateApkFile
+            );
+            Intent installIntent = new Intent(Intent.ACTION_INSTALL_PACKAGE)
+                .setData(apkUri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(installIntent);
+        } catch (Exception exception) {
+            Toast.makeText(
+                this,
+                "Preuzimanje je završeno, ali instalacijski prozor nije moguće otvoriti.",
+                Toast.LENGTH_LONG
+            ).show();
         }
     }
 
