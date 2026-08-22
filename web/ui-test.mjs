@@ -31,6 +31,11 @@ assert.equal(contactLink.textContent, 'Pošalji prijedlog ili prijavi problem');
 assert.equal(contactLink.textContent.includes('@'), false);
 assert.match(contactLink.getAttribute('href'), /^mailto:elvis\.cankovic@proton\.me\?subject=/);
 
+const packageVersion = JSON.parse(await readFile('package.json', 'utf8')).version;
+const aboutPage = await readFile(`${webDir}/o-aplikaciji.html`, 'utf8');
+assert.match(document.body.textContent, new RegExp(`Verzija ${packageVersion.replaceAll('.', '\\.')}`));
+assert.match(aboutPage, new RegExp(`<p>${packageVersion.replaceAll('.', '\\.')}<\\/p>`));
+
 const stylesheet = await readFile(`${webDir}/styles.css`, 'utf8');
 assert.match(stylesheet, /#lastPeriod\s*\{[^}]*color:\s*#fff;/s);
 assert.match(stylesheet, /#lastPeriod\s*\{[^}]*background:\s*rgba\(4, 47, 46, \.38\);/s);
@@ -90,4 +95,4 @@ assert.equal('payer' in storedState, false);
 assert.equal('payment' in storedState, false);
 assert.deepEqual(pageErrors, []);
 
-console.log('UI test je prošao: istaknuto zadnje razdoblje, diskretan kontakt, spremanje i JSON uvoz.');
+console.log('UI test je prošao: usklađena verzija, istaknuto zadnje razdoblje, kontakt, spremanje i JSON uvoz.');
