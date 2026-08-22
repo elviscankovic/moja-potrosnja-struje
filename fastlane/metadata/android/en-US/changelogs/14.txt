@@ -1,0 +1,1 @@
+Test release for verifying automatic download and installer launch.
