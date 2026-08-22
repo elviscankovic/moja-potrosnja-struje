@@ -44,6 +44,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void checkForUpdate() {
+        String installedVersion = getInstalledVersion();
         updateExecutor.execute(() -> {
             HttpURLConnection connection = null;
             try {
@@ -51,7 +52,7 @@ public class MainActivity extends BridgeActivity {
                 connection.setConnectTimeout(6000);
                 connection.setReadTimeout(6000);
                 connection.setRequestProperty("Accept", "application/vnd.github+json");
-                connection.setRequestProperty("User-Agent", "Moja-potrosnja-struje/" + BuildConfig.VERSION_NAME);
+                connection.setRequestProperty("User-Agent", "Moja-potrosnja-struje/" + installedVersion);
 
                 if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return;
 
@@ -64,7 +65,7 @@ public class MainActivity extends BridgeActivity {
 
                 JSONObject release = new JSONObject(response.toString());
                 String version = release.optString("tag_name", "").replaceFirst("^[vV]", "");
-                if (!isNewerVersion(version, BuildConfig.VERSION_NAME)) return;
+                if (!isNewerVersion(version, installedVersion)) return;
 
                 String apkUrl = findApkUrl(release.optJSONArray("assets"));
                 if (apkUrl == null) return;
@@ -76,6 +77,15 @@ public class MainActivity extends BridgeActivity {
                 if (connection != null) connection.disconnect();
             }
         });
+    }
+
+    private String getInstalledVersion() {
+        try {
+            String version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            return version == null ? "0" : version;
+        } catch (Exception ignored) {
+            return "0";
+        }
     }
 
     private String findApkUrl(JSONArray assets) {
@@ -208,7 +218,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         unregisterDownloadReceiver();
         updateExecutor.shutdownNow();
         super.onDestroy();
