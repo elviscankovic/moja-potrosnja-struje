@@ -1,0 +1,2 @@
+Added an automatic update check at startup.
+Updates download after confirmation, with final installation approval left to the user.

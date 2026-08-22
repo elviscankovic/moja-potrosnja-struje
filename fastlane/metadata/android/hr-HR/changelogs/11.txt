@@ -1,0 +1,2 @@
+Dodana automatska provjera nove verzije pri pokretanju.
+Ažuriranje se preuzima nakon odabira opcije „Ažuriraj”, a instalaciju potvrđuje korisnik.
