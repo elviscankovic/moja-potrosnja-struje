@@ -1,0 +1,2 @@
+Nova plava ikona aplikacije.
+Uklonjen tekst o web-verziji iz opisa aplikacije.

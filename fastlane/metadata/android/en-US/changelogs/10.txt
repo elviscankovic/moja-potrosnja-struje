@@ -1,0 +1,2 @@
+New blue app icon.
+Removed the web-version paragraph from the app description.
