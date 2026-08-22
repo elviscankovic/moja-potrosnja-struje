@@ -1,7 +1,7 @@
 {
   "name": "Moja potrošnja struje",
   "short_name": "Potrošnja",
-  "description": "Lokalna evidencija očitanja, potrošnje i HUB3 barkoda za uplatu električne energije.",
+  "description": "Lokalna evidencija očitanja i potrošnje električne energije.",
   "lang": "hr",
   "start_url": "./",
   "scope": "./",

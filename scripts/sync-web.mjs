@@ -8,7 +8,6 @@ const webFiles = [
   'app.js',
   'backup.js',
   'calc.js',
-  'hub3.js',
   'manifest.webmanifest',
   'sw.js',
   'icon.svg'
@@ -16,23 +15,16 @@ const webFiles = [
 
 rmSync('www', { recursive: true, force: true });
 rmSync('android/app/src/main/assets/public', { recursive: true, force: true });
-mkdirSync('www/vendor', { recursive: true });
+mkdirSync('www', { recursive: true });
 
 for (const file of webFiles) {
   cpSync(`web/${file}`, `www/${file}`);
 }
 
-// Lokalna ESM verzija generatora barkoda: nema CDN-a ni mrežnog slanja podataka.
-// @bwip-js/browser isporučuje browser ESM kao dist/bwip-js.mjs.
-cpSync('node_modules/@bwip-js/browser/dist/bwip-js.mjs', 'www/vendor/bwip-js-min.js');
-cpSync('node_modules/@bwip-js/browser/dist/bwipp.mjs', 'www/vendor/bwipp.mjs');
-
 // Prekini build ako kopirana JavaScript datoteka uvozi modul koji nedostaje.
 // Tako APK više ne može biti uspješno izrađen s neaktivnim gumbima u aplikaciji.
 const javascriptFiles = [
-  ...webFiles.filter((name) => name.endsWith('.js')),
-  'vendor/bwip-js-min.js',
-  'vendor/bwipp.mjs'
+  ...webFiles.filter((name) => name.endsWith('.js'))
 ];
 
 for (const file of javascriptFiles) {

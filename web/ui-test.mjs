@@ -57,7 +57,9 @@ const backup = JSON.stringify({
     supplyFee: 0.982,
     meteringFee: 1.983,
     vatRate: 13
-  }
+  },
+  payer: { name: 'STARI PODATAK', address: 'TEST 1', postalCode: '23000', city: 'ZADAR' },
+  payment: { contractAccount: '2201425014', iban: 'HR4924070001500325331' }
 });
 
 const input = document.querySelector('#importInput');
@@ -71,18 +73,12 @@ await new Promise((resolve) => setTimeout(resolve, 25));
 assert.match(document.querySelector('#readingCount').textContent, /^2 očitanja$/);
 assert.match(document.querySelector('#historyBody').textContent, /498/);
 
-const paymentButtons = document.querySelectorAll('.payment-button');
-assert.equal(paymentButtons.length, 1);
-paymentButtons[0].click();
-await new Promise((resolve) => setTimeout(resolve, 25));
-assert.equal(document.querySelector('#paymentModal').classList.contains('hidden'), false);
-assert.equal(document.querySelector('#paymentMonth').value, '2026-08');
-assert.equal(document.querySelector('#paymentSequence').value, '4');
-assert.equal(document.querySelector('#paymentReference').textContent, '2201425014-260804-0');
-
-const barcodeModule = await import(pathToFileURL(resolve(webDir, 'vendor/bwip-js-min.js')).href);
-assert.equal(typeof barcodeModule.toCanvas, 'function');
-assert.equal(typeof barcodeModule.pdf417, 'function');
+assert.equal(document.querySelector('.payment-button'), null);
+assert.equal(document.querySelector('#paymentModal'), null);
+assert.equal(document.querySelector('#payerForm'), null);
+const storedState = JSON.parse(localStorage.getItem('moja-potrosnja-struje-v1'));
+assert.equal('payer' in storedState, false);
+assert.equal('payment' in storedState, false);
 assert.deepEqual(pageErrors, []);
 
-console.log('UI test je prošao: spremanje, JSON uvoz, barkod uz obračun, HR01 poziv i PDF417 moduli.');
+console.log('UI test je prošao: spremanje, JSON uvoz i uklanjanje starih podataka za plaćanje.');

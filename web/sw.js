@@ -1,5 +1,5 @@
-const CACHE = 'moja-potrosnja-v6';
-const ASSETS = ['./', './index.html', './o-aplikaciji.html', './styles.css', './app.js', './backup.js', './calc.js', './hub3.js', './vendor/bwip-js-min.js', './vendor/bwipp.mjs', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'moja-potrosnja-v7';
+const ASSETS = ['./', './index.html', './o-aplikaciji.html', './styles.css', './app.js', './backup.js', './calc.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
