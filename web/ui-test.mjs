@@ -26,6 +26,15 @@ window.addEventListener('error', (event) => pageErrors.push(event.error || event
 
 await import(pathToFileURL(resolve(webDir, 'app.js')).href);
 
+const contactLink = document.querySelector('#contactLink');
+assert.equal(contactLink.textContent, 'Pošalji prijedlog ili prijavi problem');
+assert.equal(contactLink.textContent.includes('@'), false);
+assert.match(contactLink.getAttribute('href'), /^mailto:elvis\.cankovic@proton\.me\?subject=/);
+
+const stylesheet = await readFile(`${webDir}/styles.css`, 'utf8');
+assert.match(stylesheet, /#lastPeriod\s*\{[^}]*color:\s*#fff;/s);
+assert.match(stylesheet, /#lastPeriod\s*\{[^}]*background:\s*rgba\(4, 47, 46, \.38\);/s);
+
 const date = document.querySelector('#readingDate');
 const vt = document.querySelector('#readingVt');
 const nt = document.querySelector('#readingNt');
@@ -81,4 +90,4 @@ assert.equal('payer' in storedState, false);
 assert.equal('payment' in storedState, false);
 assert.deepEqual(pageErrors, []);
 
-console.log('UI test je prošao: spremanje, JSON uvoz i uklanjanje starih podataka za plaćanje.');
+console.log('UI test je prošao: istaknuto zadnje razdoblje, diskretan kontakt, spremanje i JSON uvoz.');
