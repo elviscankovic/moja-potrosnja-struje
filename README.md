@@ -5,8 +5,8 @@ Android paket aplikacije **Moja potrošnja struje**. Aplikacija je izrađena pom
 ## Identitet
 
 - Application ID: `hr.cankovic.mojapotrosnjastruje`
-- Verzija: `1.0.8`
-- Version code: `9`
+- Verzija: `1.1.0`
+- Version code: `15`
 - Licenca: GPL-3.0-only
 
 ## Izgradnja
@@ -24,7 +24,11 @@ Za javnu distribuciju koristi se release APK potpisan trajnim privatnim ključem
 
 ## Privatnost
 
-Aplikacija ne prikuplja niti šalje korisničke podatke. Očitanja se spremaju lokalno na uređaju.
+Aplikacija ne prikuplja niti šalje korisničke podatke. Očitanja se spremaju lokalno na uređaju. Mreža se koristi samo za provjeru novih izdanja i javnog paketa provjerenih službenih tarifnih stavki.
+
+## Tarifne stavke
+
+Aplikacija pri pokretanju provjerava datoteku `web/tariffs.json` iz ovog repozitorija, osim ako korisnik isključi automatsku provjeru. Ako paket ima noviju verziju, korisnik potvrđuje želi li primijeniti nove cijene. Neuspjela provjera ne mijenja postojeće vrijednosti niti prekida rad aplikacije. Ručna provjera i ručna izmjena svih vrijednosti ostaju dostupne u postavkama.
 
 ## Distribucija
 

@@ -8,6 +8,9 @@ const webFiles = [
   'app.js',
   'backup.js',
   'calc.js',
+  'model.js',
+  'tariffs.js',
+  'tariffs.json',
   'manifest.webmanifest',
   'sw.js',
   'icon.svg'
@@ -20,6 +23,10 @@ mkdirSync('www', { recursive: true });
 for (const file of webFiles) {
   cpSync(`web/${file}`, `www/${file}`);
 }
+
+cpSync('THIRD_PARTY_NOTICES.md', 'www/THIRD_PARTY_NOTICES.md');
+cpSync('node_modules/jspdf/dist/jspdf.umd.min.js', 'www/jspdf.umd.min.js');
+cpSync('node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf', 'www/DejaVuSans.ttf');
 
 // Prekini build ako kopirana JavaScript datoteka uvozi modul koji nedostaje.
 // Tako APK više ne može biti uspješno izrađen s neaktivnim gumbima u aplikaciji.

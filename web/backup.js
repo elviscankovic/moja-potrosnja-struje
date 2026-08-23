@@ -10,7 +10,9 @@ export function parseBackup(text) {
     throw new Error('Datoteka nije ispravan JSON.');
   }
 
-  if (!imported || !Array.isArray(imported.readings) || !imported.rates || typeof imported.rates !== 'object') {
+  const hasOldReadings = Array.isArray(imported?.readings);
+  const hasMeters = Array.isArray(imported?.meters) && imported.meters.length > 0;
+  if (!imported || (!hasOldReadings && !hasMeters) || !imported.rates || typeof imported.rates !== 'object') {
     throw new Error('JSON ne sadrži valjanu sigurnosnu kopiju.');
   }
 

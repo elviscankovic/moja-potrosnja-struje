@@ -1,0 +1,4 @@
+Added multiple metering points with single-tariff and dual-tariff meters.
+Added reading filters and a simplified four-column PDF printout.
+Added an optional official tariff check at startup with user confirmation before applying changes.
+Existing readings are automatically preserved in the initial metering point.

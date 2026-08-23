@@ -24,7 +24,28 @@ for (const [name, value] of Object.entries({
 const pageErrors = [];
 window.addEventListener('error', (event) => pageErrors.push(event.error || event.message));
 
+const remoteTariffs = JSON.parse(await readFile('web/tariffs.json', 'utf8'));
+remoteTariffs.version = 2;
+remoteTariffs.effectiveFrom = '2026-10-01';
+remoteTariffs.rates.energySingle = 0.1;
+Object.defineProperty(globalThis, 'fetch', {
+  configurable: true,
+  value: async () => ({ ok: true, json: async () => remoteTariffs })
+});
+
 await import(pathToFileURL(resolve(webDir, 'app.js')).href);
+await new Promise((resolve) => setTimeout(resolve, 25));
+
+const automaticallyUpdatedState = JSON.parse(localStorage.getItem('moja-potrosnja-struje-v1'));
+assert.equal(automaticallyUpdatedState.tariffVersion, 2);
+assert.equal(automaticallyUpdatedState.ratesEffectiveFrom, '2026-10-01');
+assert.equal(automaticallyUpdatedState.rates.energySingle, 0.1);
+assert.match(document.querySelector('#tariffStatus').textContent, /paket 2/);
+assert.equal(document.querySelector('#autoTariffCheck').checked, true);
+document.querySelector('#autoTariffCheck').checked = false;
+document.querySelector('#autoTariffCheck').dispatchEvent(new window.Event('change', { bubbles: true }));
+assert.equal(JSON.parse(localStorage.getItem('moja-potrosnja-struje-v1')).autoTariffCheck, false);
+assert.match(document.querySelector('#tariffStatus').textContent, /automatska provjera isključena/);
 
 const contactLink = document.querySelector('#contactLink');
 assert.equal(contactLink.textContent, 'Pošalji prijedlog ili prijavi problem');
@@ -39,6 +60,8 @@ assert.match(aboutPage, new RegExp(`<p>${packageVersion.replaceAll('.', '\\.')}<
 const stylesheet = await readFile(`${webDir}/styles.css`, 'utf8');
 assert.match(stylesheet, /#lastPeriod\s*\{[^}]*color:\s*#fff;/s);
 assert.match(stylesheet, /#lastPeriod\s*\{[^}]*background:\s*rgba\(4, 47, 46, \.38\);/s);
+assert.match(stylesheet, /@media print[\s\S]*\.summary-grid[\s\S]*display:\s*none\s*!important/);
+assert.match(stylesheet, /@media print[\s\S]*\.print-heading\s*\{\s*display:\s*block/);
 
 const date = document.querySelector('#readingDate');
 const vt = document.querySelector('#readingVt');
@@ -86,13 +109,45 @@ await new Promise((resolve) => setTimeout(resolve, 25));
 
 assert.match(document.querySelector('#readingCount').textContent, /^2 očitanja$/);
 assert.match(document.querySelector('#historyBody').textContent, /498/);
+assert.equal(document.querySelector('#meterSelect').options.length, 1);
+assert.equal(document.querySelector('#activeMeterName').textContent, 'Glavno brojilo');
+
+document.querySelector('#addMeterBtn').click();
+document.querySelector('#meterName').value = 'Druga kuća';
+document.querySelector('#meterType').value = 'single';
+document.querySelector('#meterForm').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+
+assert.equal(document.querySelector('#meterSelect').options.length, 2);
+assert.equal(document.querySelector('#activeMeterName').textContent, 'Druga kuća');
+assert.equal(document.querySelector('#activeMeterType').textContent, 'Jednotarifno brojilo');
+assert.equal(document.querySelector('#ntField').classList.contains('hidden'), true);
+assert.equal(document.querySelector('#vtLabelText').textContent, 'Stanje brojila (kWh)');
+
+date.value = '2026-07-01';
+vt.value = '100';
+document.querySelector('#readingForm').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+date.value = '2026-08-01';
+vt.value = '150';
+document.querySelector('#readingForm').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+assert.match(document.querySelector('#readingCount').textContent, /^2 očitanja$/);
+assert.match(document.querySelector('#historyBody').textContent, /50 kWh/);
+
+document.querySelector('#filterFrom').value = '2026-08-01';
+document.querySelector('#filterFrom').dispatchEvent(new window.Event('change', { bubbles: true }));
+assert.equal(document.querySelector('#readingCount').textContent, '1 od 2 zapisa');
+assert.match(document.querySelector('#printFilter').textContent, /01\. 08\. 2026/);
+assert.equal(document.querySelectorAll('#historyBody tr').length, 1);
 
 assert.equal(document.querySelector('.payment-button'), null);
 assert.equal(document.querySelector('#paymentModal'), null);
 assert.equal(document.querySelector('#payerForm'), null);
 const storedState = JSON.parse(localStorage.getItem('moja-potrosnja-struje-v1'));
+assert.equal(storedState.meters.length, 2);
+assert.equal(storedState.meters[1].type, 'single');
+assert.equal(storedState.meters[1].readings.length, 2);
+assert.equal('readings' in storedState, false);
 assert.equal('payer' in storedState, false);
 assert.equal('payment' in storedState, false);
 assert.deepEqual(pageErrors, []);
 
-console.log('UI test je prošao: usklađena verzija, istaknuto zadnje razdoblje, kontakt, spremanje i JSON uvoz.');
+console.log('UI test je prošao: migracija, dva brojila, jednotarifni unos, filtriranje i priprema PDF-a.');

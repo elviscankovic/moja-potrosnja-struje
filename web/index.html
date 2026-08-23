@@ -1,12 +1,229 @@
 <!doctype html>
 <html lang="hr">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"><meta name="theme-color" content="#0f766e"><meta name="description" content="Jednostavna lokalna evidencija potrošnje električne energije."><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css"><title>Moja potrošnja struje</title></head>
-<body><header class="app-header"><div class="header-inner"><div><p class="eyebrow">LOKALNA EVIDENCIJA</p><h1>Moja potrošnja struje</h1><p class="header-subtitle">Očitanja, potrošnja i procjena troška — jednostavno i bez prijave.</p></div><button id="installBtn" class="button button-light hidden" type="button">Instaliraj aplikaciju</button></div></header><main class="container">
-<section class="summary-grid" aria-label="Sažetak potrošnje"><article class="summary-card summary-card-accent"><span>Zadnje razdoblje</span><strong id="lastConsumption">—</strong><small id="lastPeriod">Dodaj dva očitanja</small></article><article class="summary-card"><span>Procijenjeni trošak</span><strong id="lastCost">—</strong><small>informativni izračun</small></article><article class="summary-card"><span>Prosječna mjesečna potrošnja</span><strong id="averageConsumption">—</strong><small id="averageInfo">nema dovoljno podataka</small></article><article class="summary-card"><span>Ukupno u tekućoj godini</span><strong id="yearConsumption">—</strong><small id="yearCost">—</small></article></section>
-<section class="panel entry-panel"><div class="panel-heading"><div><p class="section-kicker">NOVO OČITANJE</p><h2>Upiši stanje brojila</h2></div><p class="help-text">Za elektroničko brojilo: VT je 1.8.1, a NT 1.8.2.</p></div><form id="readingForm" novalidate><input id="editingId" type="hidden"><div class="form-grid"><label>Datum očitanja<input id="readingDate" type="date" required></label><label>VT — viša tarifa (kWh)<input id="readingVt" type="number" min="0" step="0.01" inputmode="decimal" required></label><label>NT — niža tarifa (kWh)<input id="readingNt" type="number" min="0" step="0.01" inputmode="decimal" required></label><label>Napomena <span class="optional">(nije obavezno)</span><input id="readingNote" type="text" maxlength="80"></label></div><div id="formError" class="message message-error hidden" role="alert"></div><div class="form-actions"><button id="saveReadingBtn" class="button button-primary" type="submit">Spremi očitanje</button><button id="cancelEditBtn" class="button button-secondary hidden" type="button">Odustani</button></div></form></section>
-<section class="panel chart-panel"><div class="panel-heading compact"><div><p class="section-kicker">PREGLED</p><h2>Potrošnja po razdobljima</h2></div><div class="legend"><span><i class="dot dot-vt"></i> VT</span><span><i class="dot dot-nt"></i> NT</span></div></div><div id="chart" class="chart"></div></section>
-<section id="billPanel" class="panel bill-panel hidden"><div class="panel-heading compact"><div><p class="section-kicker">INFORMATIVNI OBRAČUN</p><h2>Zadnje razdoblje</h2></div><span id="billPeriod" class="badge"></span></div><div class="bill-grid"><div><span>Energija</span><strong id="billEnergy">—</strong></div><div><span>Prijenos</span><strong id="billTransmission">—</strong></div><div><span>Distribucija</span><strong id="billDistribution">—</strong></div><div><span>OIE naknada</span><strong id="billRenewable">—</strong></div><div><span>Opskrba + mjerno mjesto</span><strong id="billFixed">—</strong></div><div><span>Osnovica</span><strong id="billSubtotal">—</strong></div><div><span>PDV</span><strong id="billVat">—</strong></div><div class="bill-total"><span>Procijenjeno ukupno</span><strong id="billTotal">—</strong></div></div></section>
-<section class="panel history-panel"><div class="panel-heading compact"><div><p class="section-kicker">POVIJEST</p><h2>Spremljena očitanja</h2></div><span id="readingCount" class="badge">0 očitanja</span></div><div class="table-wrap"><table><thead><tr><th>Datum</th><th>Stanje VT / NT</th><th>Potrošnja</th><th>Procjena</th><th></th></tr></thead><tbody id="historyBody"></tbody></table><div id="emptyState" class="empty-state"><div class="empty-icon">⚡</div><h3>Još nema očitanja</h3><p>Unesi prvo stanje brojila. Potrošnja će se prikazati nakon drugog očitanja.</p></div></div></section>
-<details class="panel settings-panel"><summary><span><span class="section-kicker">POSTAVKE I SIGURNOST PODATAKA</span><strong>Cijene, izvoz i uvoz</strong></span><span class="summary-hint">Otvori</span></summary><div class="settings-content"><div class="settings-intro"><h2>Tarifne stavke</h2><p>Zadane vrijednosti odgovaraju kontrolnom HEP izračunu koji smo koristili.</p></div><form id="settingsForm"><div class="rates-grid"><fieldset><legend>Energija (€/kWh)</legend><label>VT <input id="energyVt" type="number" min="0" step="0.000001" required></label><label>NT <input id="energyNt" type="number" min="0" step="0.000001" required></label></fieldset><fieldset><legend>Prijenos (€/kWh)</legend><label>VT <input id="transmissionVt" type="number" min="0" step="0.000001" required></label><label>NT <input id="transmissionNt" type="number" min="0" step="0.000001" required></label></fieldset><fieldset><legend>Distribucija (€/kWh)</legend><label>VT <input id="distributionVt" type="number" min="0" step="0.000001" required></label><label>NT <input id="distributionNt" type="number" min="0" step="0.000001" required></label></fieldset><fieldset><legend>Ostalo</legend><label>OIE (€/kWh) <input id="renewableFee" type="number" min="0" step="0.000001" required></label><label>Opskrba (€/mj.) <input id="supplyFee" type="number" min="0" step="0.001" required></label><label>Mjerno mjesto (€/mj.) <input id="meteringFee" type="number" min="0" step="0.001" required></label><label>PDV (%) <input id="vatRate" type="number" min="0" max="100" step="0.01" required></label></fieldset></div><div class="form-actions settings-actions"><button class="button button-primary" type="submit">Spremi cijene</button><button id="resetRatesBtn" class="button button-secondary" type="button">Vrati zadane cijene</button></div></form><div class="data-tools"><div><h2>Sigurnosna kopija</h2><p>Izvezi očitanja i postavke cijena u jednu datoteku.</p></div><div class="tool-buttons"><button id="exportBtn" class="button button-secondary" type="button">Izvezi podatke</button><label class="button button-secondary file-button">Uvezi podatke<input id="importInput" type="file" accept="application/json,.json"></label><button id="printBtn" class="button button-secondary" type="button">Ispis / PDF</button></div></div></div></details>
-<footer class="app-footer"><p class="disclaimer">Procjena je informativna i može odstupati od službenog HEP računa.</p><p class="contact"><a id="contactLink" class="contact-link" href="mailto:elvis.cankovic@proton.me?subject=Moja%20potro%C5%A1nja%20struje%20-%20prijedlog%20ili%20problem">Pošalji prijedlog ili prijavi problem</a></p><p><a href="o-aplikaciji.html">O aplikaciji i privatnost</a><span aria-hidden="true"> · </span>Verzija 1.0.13</p></footer></main>
-<div id="toast" class="toast hidden" role="status" aria-live="polite"></div><script type="module" src="app.js"></script></body></html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="Jednostavna lokalna evidencija potrošnje električne energije.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <title>Moja potrošnja struje</title>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">LOKALNA EVIDENCIJA</p>
+        <h1>Moja potrošnja struje</h1>
+        <p class="header-subtitle">Očitanja, potrošnja i procjena troška — jednostavno i bez prijave.</p>
+      </div>
+      <button id="installBtn" class="button button-light hidden" type="button">Instaliraj aplikaciju</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel meter-switcher" aria-label="Mjerno mjesto">
+      <div class="meter-switcher-main">
+        <label for="meterSelect">Aktivno mjerno mjesto
+          <select id="meterSelect"></select>
+        </label>
+        <div class="meter-meta">
+          <strong id="activeMeterName">Glavno brojilo</strong>
+          <span id="activeMeterType" class="badge">Dvotarifno brojilo</span>
+        </div>
+      </div>
+      <div class="meter-actions">
+        <button id="addMeterBtn" class="button button-primary" type="button">Dodaj mjerno mjesto</button>
+        <button id="editMeterBtn" class="button button-secondary" type="button">Uredi naziv</button>
+        <button id="deleteMeterBtn" class="button button-danger" type="button">Obriši</button>
+      </div>
+    </section>
+
+    <section id="meterFormPanel" class="panel meter-form-panel hidden">
+      <div class="panel-heading compact">
+        <div>
+          <p class="section-kicker">MJERNO MJESTO</p>
+          <h2>Naziv i vrsta brojila</h2>
+        </div>
+      </div>
+      <form id="meterForm">
+        <input id="meterEditingId" type="hidden">
+        <div class="meter-form-grid">
+          <label>Naziv mjernog mjesta
+            <input id="meterName" type="text" maxlength="60" placeholder="npr. Kuća Zemunik" required>
+          </label>
+          <label>Vrsta brojila
+            <select id="meterType" required>
+              <option value="dual">Dvotarifno (VT i NT)</option>
+              <option value="single">Jednotarifno</option>
+            </select>
+          </label>
+        </div>
+        <p id="meterTypeHelp" class="help-text"></p>
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">Spremi mjerno mjesto</button>
+          <button id="cancelMeterBtn" class="button button-secondary" type="button">Odustani</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="summary-grid" aria-label="Sažetak potrošnje">
+      <article class="summary-card summary-card-accent"><span>Zadnje razdoblje</span><strong id="lastConsumption">—</strong><small id="lastPeriod">Dodaj dva očitanja</small></article>
+      <article class="summary-card"><span>Procijenjeni trošak</span><strong id="lastCost">—</strong><small>informativni izračun</small></article>
+      <article class="summary-card"><span>Prosječna mjesečna potrošnja</span><strong id="averageConsumption">—</strong><small id="averageInfo">nema dovoljno podataka</small></article>
+      <article class="summary-card"><span>Ukupno u tekućoj godini</span><strong id="yearConsumption">—</strong><small id="yearCost">—</small></article>
+    </section>
+
+    <section class="panel entry-panel">
+      <div class="panel-heading">
+        <div><p class="section-kicker">NOVO OČITANJE</p><h2>Upiši stanje brojila</h2></div>
+        <p id="readingHelp" class="help-text"></p>
+      </div>
+      <form id="readingForm" novalidate>
+        <input id="editingId" type="hidden">
+        <div class="form-grid">
+          <label>Datum očitanja<input id="readingDate" type="date" required></label>
+          <label><span id="vtLabelText">VT — viša tarifa (kWh)</span><input id="readingVt" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+          <label id="ntField">NT — niža tarifa (kWh)<input id="readingNt" type="number" min="0" step="0.01" inputmode="decimal" required></label>
+          <label>Napomena <span class="optional">(nije obavezno)</span><input id="readingNote" type="text" maxlength="80"></label>
+        </div>
+        <div id="formError" class="message message-error hidden" role="alert"></div>
+        <div class="form-actions">
+          <button id="saveReadingBtn" class="button button-primary" type="submit">Spremi očitanje</button>
+          <button id="cancelEditBtn" class="button button-secondary hidden" type="button">Odustani</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-heading compact">
+        <div><p class="section-kicker">PREGLED</p><h2>Potrošnja po razdobljima</h2></div>
+        <div id="dualLegend" class="legend"><span><i class="dot dot-vt"></i> VT</span><span><i class="dot dot-nt"></i> NT</span></div>
+      </div>
+      <div id="chart" class="chart"></div>
+    </section>
+
+    <section id="billPanel" class="panel bill-panel hidden">
+      <div class="panel-heading compact">
+        <div><p class="section-kicker">INFORMATIVNI OBRAČUN</p><h2>Zadnje razdoblje</h2></div>
+        <span id="billPeriod" class="badge"></span>
+      </div>
+      <div class="bill-grid">
+        <div><span>Energija</span><strong id="billEnergy">—</strong></div>
+        <div><span>Prijenos</span><strong id="billTransmission">—</strong></div>
+        <div><span>Distribucija</span><strong id="billDistribution">—</strong></div>
+        <div><span>OIE naknada</span><strong id="billRenewable">—</strong></div>
+        <div><span>Opskrba + mjerno mjesto</span><strong id="billFixed">—</strong></div>
+        <div><span>Osnovica</span><strong id="billSubtotal">—</strong></div>
+        <div><span>PDV</span><strong id="billVat">—</strong></div>
+        <div class="bill-total"><span>Procijenjeno ukupno</span><strong id="billTotal">—</strong></div>
+      </div>
+    </section>
+
+    <section class="panel history-panel">
+      <div class="panel-heading compact history-heading">
+        <div><p class="section-kicker">POVIJEST</p><h2>Spremljena očitanja</h2></div>
+        <span id="readingCount" class="badge">0 očitanja</span>
+      </div>
+      <div class="history-filters" aria-label="Filtriranje očitanja">
+        <label>Od datuma<input id="filterFrom" type="date"></label>
+        <label>Do datuma<input id="filterTo" type="date"></label>
+        <button id="clearFiltersBtn" class="button button-secondary" type="button">Ukloni filtar</button>
+      </div>
+      <div class="print-heading">
+        <h2 id="printTitle">Moja potrošnja struje</h2>
+        <p id="printFilter">Sva očitanja</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Datum</th><th id="historyStateHeader">Stanje VT / NT</th><th>Potrošnja</th><th>Cijena</th><th></th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state">
+          <div class="empty-icon">⚡</div>
+          <h3 id="emptyTitle">Još nema očitanja</h3>
+          <p id="emptyText">Unesi prvo stanje brojila. Potrošnja će se prikazati nakon drugog očitanja.</p>
+        </div>
+      </div>
+    </section>
+
+    <details class="panel settings-panel">
+      <summary>
+        <span><span class="section-kicker">POSTAVKE I SIGURNOST PODATAKA</span><strong>Cijene, izvoz i uvoz</strong></span>
+        <span class="summary-hint">Otvori</span>
+      </summary>
+      <div class="settings-content">
+        <div class="settings-intro">
+          <h2>Tarifne stavke</h2>
+          <p>Zadane vrijednosti odgovaraju HEP tarifnim modelima Plavi i Bijeli. Sve se vrijednosti mogu ručno prilagoditi.</p>
+        </div>
+        <div class="tariff-update-box">
+          <div>
+            <strong>Automatska provjera cijena</strong>
+            <p id="tariffStatus">Službene cijene provjeravaju se pri pokretanju aplikacije.</p>
+          </div>
+          <div class="tariff-update-actions">
+            <label class="toggle-control"><input id="autoTariffCheck" type="checkbox" checked><span>Provjeri pri pokretanju</span></label>
+            <button id="checkRatesBtn" class="button button-secondary" type="button">Provjeri sada</button>
+          </div>
+        </div>
+        <form id="settingsForm">
+          <div class="rates-grid">
+            <fieldset>
+              <legend>Energija (€/kWh)</legend>
+              <label>Jedna tarifa <input id="energySingle" type="number" min="0" step="0.000001" required></label>
+              <label>VT <input id="energyVt" type="number" min="0" step="0.000001" required></label>
+              <label>NT <input id="energyNt" type="number" min="0" step="0.000001" required></label>
+            </fieldset>
+            <fieldset>
+              <legend>Prijenos (€/kWh)</legend>
+              <label>Jedna tarifa <input id="transmissionSingle" type="number" min="0" step="0.000001" required></label>
+              <label>VT <input id="transmissionVt" type="number" min="0" step="0.000001" required></label>
+              <label>NT <input id="transmissionNt" type="number" min="0" step="0.000001" required></label>
+            </fieldset>
+            <fieldset>
+              <legend>Distribucija (€/kWh)</legend>
+              <label>Jedna tarifa <input id="distributionSingle" type="number" min="0" step="0.000001" required></label>
+              <label>VT <input id="distributionVt" type="number" min="0" step="0.000001" required></label>
+              <label>NT <input id="distributionNt" type="number" min="0" step="0.000001" required></label>
+            </fieldset>
+            <fieldset>
+              <legend>Ostalo</legend>
+              <label>OIE (€/kWh) <input id="renewableFee" type="number" min="0" step="0.000001" required></label>
+              <label>Opskrba (€/mj.) <input id="supplyFee" type="number" min="0" step="0.001" required></label>
+              <label>Mjerno mjesto (€/mj.) <input id="meteringFee" type="number" min="0" step="0.001" required></label>
+              <label>PDV (%) <input id="vatRate" type="number" min="0" max="100" step="0.01" required></label>
+            </fieldset>
+          </div>
+          <div class="form-actions settings-actions">
+            <button class="button button-primary" type="submit">Spremi cijene</button>
+            <button id="resetRatesBtn" class="button button-secondary" type="button">Vrati zadane cijene</button>
+          </div>
+        </form>
+        <div class="data-tools">
+          <div>
+            <h2>Sigurnosna kopija</h2>
+            <p>Izvezi sva mjerna mjesta, očitanja i postavke cijena u jednu datoteku.</p>
+          </div>
+          <div class="tool-buttons">
+            <button id="exportBtn" class="button button-secondary" type="button">Izvezi podatke</button>
+            <label class="button button-secondary file-button">Uvezi podatke<input id="importInput" type="file" accept="application/json,.json"></label>
+            <button id="printBtn" class="button button-secondary" type="button">Spremi PDF</button>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <footer class="app-footer">
+      <p class="disclaimer">Procjena je informativna i može odstupati od službenog HEP računa.</p>
+      <p class="contact"><a id="contactLink" class="contact-link" href="mailto:elvis.cankovic@proton.me?subject=Moja%20potro%C5%A1nja%20struje%20-%20prijedlog%20ili%20problem">Pošalji prijedlog ili prijavi problem</a></p>
+      <p><a href="o-aplikaciji.html">O aplikaciji i privatnost</a><span aria-hidden="true"> · </span>Verzija 1.1.0</p>
+    </footer>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <script src="jspdf.umd.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

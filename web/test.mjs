@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
-import { DEFAULT_RATES, calculateBill, enrichReadings, monthsBetween, validateReading } from './calc.js';
+import { readFile } from 'node:fs/promises';
+import { jsPDF } from 'jspdf';
+import { DEFAULT_RATES, calculateBill, calculateSingleTariffBill, enrichReadings, monthsBetween, validateReading } from './calc.js';
 import { parseBackup, readBackupFile } from './backup.js';
+import { METER_TYPES, countReadings, migrateState } from './model.js';
+import { isNewerTariffPackage, normalizeTariffPackage } from './tariffs.js';
 
 const hepExample = calculateBill(325, 175, DEFAULT_RATES, 1);
 assert.equal(Number(hepExample.energy.toFixed(2)), 39.94);
@@ -10,6 +14,12 @@ assert.equal(Number(hepExample.renewable.toFixed(2)), 6.62);
 assert.equal(Number(hepExample.subtotal.toFixed(2)), 75.89);
 assert.equal(Number(hepExample.vat.toFixed(2)), 9.87);
 assert.equal(Number(hepExample.total.toFixed(2)), 85.76);
+
+const singleTariffExample = calculateSingleTariffBill(500, DEFAULT_RATES, 1);
+assert.equal(Number(singleTariffExample.energy.toFixed(2)), 45.66);
+assert.equal(Number(singleTariffExample.transmission.toFixed(2)), 7.36);
+assert.equal(Number(singleTariffExample.distribution.toFixed(2)), 18.8);
+assert.equal(Number(singleTariffExample.total.toFixed(2)), 91.98);
 
 assert.equal(monthsBetween('2026-01-15', '2026-02-15'), 1);
 assert.equal(monthsBetween('2026-01-15', '2026-04-15'), 3);
@@ -23,6 +33,13 @@ assert.equal(enriched[0].usage, null);
 assert.equal(enriched[1].usage.total, 500);
 assert.equal(Number(enriched[1].bill.total.toFixed(2)), 85.76);
 
+const singleEnriched = enrichReadings([
+  { id: 's1', date: '2026-01-15', vt: 1000, nt: 0 },
+  { id: 's2', date: '2026-02-15', vt: 1500, nt: 0 }
+], DEFAULT_RATES, METER_TYPES.SINGLE);
+assert.equal(singleEnriched[1].usage.total, 500);
+assert.equal(Number(singleEnriched[1].bill.total.toFixed(2)), 91.98);
+
 assert.match(validateReading({ date: '2026-02-01', vt: 1200, nt: 600 }, readings), /Datum mora biti noviji/);
 assert.match(validateReading({ date: '2026-02-15', vt: 1400, nt: 700 }, readings), /već postoji/);
 assert.match(validateReading({ date: '2026-03-15', vt: 1324, nt: 700 }, readings), /VT ne može biti manji/);
@@ -31,6 +48,8 @@ assert.match(validateReading({ date: '2026-03-15', vt: 1325, nt: 675 }, readings
 assert.equal(validateReading({ date: '2026-03-15', vt: 1400, nt: 675 }, readings), null);
 assert.equal(validateReading({ date: '2026-03-15', vt: 1325, nt: 700 }, readings), null);
 assert.equal(validateReading({ date: '2026-03-15', vt: 1400, nt: 700 }, readings), null);
+assert.equal(validateReading({ date: '2026-03-15', vt: 1400, nt: 0 }, readings, null, METER_TYPES.SINGLE), null);
+assert.match(validateReading({ date: '2026-03-15', vt: 1200, nt: 0 }, readings, null, METER_TYPES.SINGLE), /Stanje ne može biti manje/);
 
 const editReadings = [
   { id: 'a', date: '2026-01-15', vt: 1000, nt: 500 },
@@ -54,6 +73,32 @@ const parsedBackup = parseBackup(`\uFEFF${backupText}`);
 assert.equal(parsedBackup.version, 1);
 assert.equal(parsedBackup.readings.length, 2);
 assert.equal(parsedBackup.readings[1].vt, 498);
+
+const migrated = migrateState(parsedBackup, DEFAULT_RATES);
+assert.equal(migrated.meters.length, 1);
+assert.equal(migrated.meters[0].name, 'Glavno brojilo');
+assert.equal(migrated.meters[0].type, METER_TYPES.DUAL);
+assert.equal(migrated.meters[0].readings.length, 2);
+assert.equal(countReadings(migrated), 2);
+
+const currentBackup = {
+  version: 5,
+  meters: [
+    { id: 'home', name: 'Kuća', type: 'dual', readings: parsedBackup.readings },
+    { id: 'garage', name: 'Garaža', type: 'single', readings: [{ id: 's1', date: '2026-08-01', value: 25 }] }
+  ],
+  activeMeterId: 'garage',
+  rates: DEFAULT_RATES
+};
+const normalizedCurrent = migrateState(parseBackup(JSON.stringify(currentBackup)), DEFAULT_RATES);
+assert.equal(normalizedCurrent.meters.length, 2);
+assert.equal(normalizedCurrent.activeMeterId, 'garage');
+assert.equal(normalizedCurrent.meters[1].readings[0].vt, 25);
+assert.equal(normalizedCurrent.meters[1].readings[0].nt, 0);
+assert.equal(countReadings(normalizedCurrent), 3);
+assert.equal(normalizedCurrent.autoTariffCheck, true);
+const disabledAutomaticCheck = migrateState({ ...currentBackup, autoTariffCheck: false }, DEFAULT_RATES);
+assert.equal(disabledAutomaticCheck.autoTariffCheck, false);
 assert.throws(() => parseBackup(''), /prazna/);
 assert.throws(() => parseBackup('{nije json}'), /ispravan JSON/);
 assert.throws(() => parseBackup('{"readings":[]}'), /valjanu sigurnosnu kopiju/);
@@ -66,4 +111,23 @@ class TestFileReader {
 }
 assert.equal(await readBackupFile({ contents: backupText }, TestFileReader), backupText);
 
-console.log('Svi testovi su prošli: HEP izračun, validacija očitanja i Android JSON uvoz.');
+const pdf = new jsPDF();
+const pdfFont = (await readFile('node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf')).toString('base64');
+pdf.addFileToVFS('DejaVuSans.ttf', pdfFont);
+pdf.addFont('DejaVuSans.ttf', 'DejaVu', 'normal');
+pdf.setFont('DejaVu');
+pdf.text('Datum · Stanje brojila · Potrošnja · Cijena — ČćŽžŠš', 14, 20);
+const pdfBytes = new Uint8Array(pdf.output('arraybuffer'));
+assert.equal(new TextDecoder().decode(pdfBytes.slice(0, 5)), '%PDF-');
+assert.ok(pdfBytes.length > 100_000);
+
+const tariffPayload = JSON.parse(await readFile('web/tariffs.json', 'utf8'));
+const normalizedTariffs = normalizeTariffPackage(tariffPayload, Object.keys(DEFAULT_RATES));
+assert.equal(normalizedTariffs.version, 1);
+assert.equal(normalizedTariffs.effectiveFrom, '2026-01-01');
+assert.deepEqual(normalizedTariffs.rates, DEFAULT_RATES);
+assert.equal(isNewerTariffPackage(normalizedTariffs, 0), true);
+assert.equal(isNewerTariffPackage(normalizedTariffs, 1), false);
+assert.throws(() => normalizeTariffPackage({ version: 2, effectiveFrom: '2026-10-01', rates: {} }, Object.keys(DEFAULT_RATES)), /Nedostaje tarifna stavka/);
+
+console.log('Svi testovi su prošli: obje tarife, automatske cijene, više mjernih mjesta, migracija, PDF i Android JSON uvoz.');

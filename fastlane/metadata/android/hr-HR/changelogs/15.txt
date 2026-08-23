@@ -1,0 +1,4 @@
+Dodana podrška za više mjernih mjesta te jednotarifna i dvotarifna brojila.
+Dodano filtriranje očitanja i jednostavan PDF ispis četiri osnovna podatka.
+Dodana izborna provjera novih službenih tarifnih stavki pri pokretanju, uz potvrdu korisnika prije primjene.
+Postojeća očitanja automatski se čuvaju u početnom mjernom mjestu.

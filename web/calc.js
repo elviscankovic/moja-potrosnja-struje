@@ -1,8 +1,11 @@
 export const DEFAULT_RATES = Object.freeze({
+  energySingle: 0.091324,
   energyVt: 0.097189,
   energyNt: 0.047688,
+  transmissionSingle: 0.014716,
   transmissionVt: 0.021256,
   transmissionNt: 0.008175,
+  distributionSingle: 0.037608,
   distributionVt: 0.044446,
   distributionNt: 0.020514,
   renewableFee: 0.013239,
@@ -33,6 +36,21 @@ export function calculateBill(vtKwh, ntKwh, rates = DEFAULT_RATES, months = 1) {
   return { vt, nt, totalKwh, energy, transmission, distribution, renewable, supply, metering, subtotal, vat, total: money(subtotal + vat) };
 }
 
+export function calculateSingleTariffBill(kwh, rates = DEFAULT_RATES, months = 1) {
+  const usage = Math.max(0, Number(kwh) || 0);
+  const periodMonths = Math.max(0, Number(months) || 0);
+  const energy = money(usage * rates.energySingle);
+  const transmission = money(usage * rates.transmissionSingle);
+  const distribution = money(usage * rates.distributionSingle);
+  const renewable = money(usage * rates.renewableFee);
+  const supply = money(periodMonths * rates.supplyFee);
+  const metering = money(periodMonths * rates.meteringFee);
+  const subtotal = money(energy + transmission + distribution + renewable + supply + metering);
+  const vat = money(subtotal * (rates.vatRate / 100));
+
+  return { vt: usage, nt: 0, totalKwh: usage, energy, transmission, distribution, renewable, supply, metering, subtotal, vat, total: money(subtotal + vat) };
+}
+
 export function monthsBetween(startDate, endDate) {
   const start = new Date(`${startDate}T12:00:00`);
   const end = new Date(`${endDate}T12:00:00`);
@@ -41,7 +59,7 @@ export function monthsBetween(startDate, endDate) {
   return Math.max(1, Math.round(days / 30.4375));
 }
 
-export function enrichReadings(readings, rates = DEFAULT_RATES) {
+export function enrichReadings(readings, rates = DEFAULT_RATES, meterType = 'dual') {
   const sorted = [...readings].sort((a, b) => a.date.localeCompare(b.date));
   return sorted.map((reading, index) => {
     if (index === 0) return { ...reading, usage: null, bill: null, months: 0 };
@@ -49,14 +67,19 @@ export function enrichReadings(readings, rates = DEFAULT_RATES) {
     const vt = reading.vt - previous.vt;
     const nt = reading.nt - previous.nt;
     const months = monthsBetween(previous.date, reading.date);
-    return { ...reading, usage: { vt, nt, total: vt + nt }, bill: calculateBill(vt, nt, rates, months), months };
+    const bill = meterType === 'single'
+      ? calculateSingleTariffBill(vt, rates, months)
+      : calculateBill(vt, nt, rates, months);
+    return { ...reading, usage: { vt, nt, total: vt + nt }, bill, months };
   });
 }
 
-export function validateReading(candidate, readings, editingId = null) {
+export function validateReading(candidate, readings, editingId = null, meterType = 'dual') {
   if (!candidate.date) return 'Odaberi datum očitanja.';
-  if (!Number.isFinite(candidate.vt) || candidate.vt < 0) return 'Upiši ispravno stanje više tarife (VT).';
-  if (!Number.isFinite(candidate.nt) || candidate.nt < 0) return 'Upiši ispravno stanje niže tarife (NT).';
+  if (!Number.isFinite(candidate.vt) || candidate.vt < 0) {
+    return meterType === 'single' ? 'Upiši ispravno stanje brojila.' : 'Upiši ispravno stanje više tarife (VT).';
+  }
+  if (meterType === 'dual' && (!Number.isFinite(candidate.nt) || candidate.nt < 0)) return 'Upiši ispravno stanje niže tarife (NT).';
 
   const others = readings
     .filter((item) => item.id !== editingId)
@@ -74,9 +97,11 @@ export function validateReading(candidate, readings, editingId = null) {
       return `Datum mora biti noviji od zadnjeg očitanja (${formatDate(latest.date)}).`;
     }
     if (candidate.vt < latest.vt) {
-      return `VT ne može biti manji od zadnjeg stanja (${latest.vt} kWh).`;
+      return meterType === 'single'
+        ? `Stanje ne može biti manje od zadnjeg stanja (${latest.vt} kWh).`
+        : `VT ne može biti manji od zadnjeg stanja (${latest.vt} kWh).`;
     }
-    if (candidate.nt < latest.nt) {
+    if (meterType === 'dual' && candidate.nt < latest.nt) {
       return `NT ne može biti manji od zadnjeg stanja (${latest.nt} kWh).`;
     }
     if (candidate.vt === latest.vt && candidate.nt === latest.nt) {
