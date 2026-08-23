@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "effectiveFrom": "2026-01-01",
+  "checkedAt": "2026-08-23",
+  "sourceUrls": [
+    "https://mojracun.hep.hr/elektra/kalkulator",
+    "https://www.hep.hr/elektra/kucanstvo/tarifne-stavke-cijene/1547",
+    "https://www.hep.hr/ods/korisnici/kucanstvo/tarifne-stavke-cijene/160"
+  ],
+  "rates": {
+    "energySingle": 0.091324,
+    "energyVt": 0.097189,
+    "energyNt": 0.047688,
+    "transmissionSingle": 0.014716,
+    "transmissionVt": 0.021256,
+    "transmissionNt": 0.008175,
+    "distributionSingle": 0.037608,
+    "distributionVt": 0.044446,
+    "distributionNt": 0.020514,
+    "renewableFee": 0.013239,
+    "supplyFee": 0.982,
+    "meteringFee": 1.983,
+    "vatRate": 13
+  }
+}
