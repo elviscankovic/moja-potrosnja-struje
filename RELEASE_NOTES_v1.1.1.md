@@ -1,4 +1,4 @@
-# Moja potrošnja struje v1.1.0
+# Moja potrošnja struje v1.1.1
 
 - Više mjernih mjesta bez ograničenja broja.
 - Jednotarifna i dvotarifna brojila.

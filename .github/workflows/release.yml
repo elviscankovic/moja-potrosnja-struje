@@ -2,8 +2,6 @@ name: Android release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
 
@@ -27,15 +25,29 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Odredi novu verziju
+      - name: Provjeri oznaku i verziju
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG_NAME="$GITHUB_REF_NAME"
-          else
-            TAG_NAME="v$(node -p "require('./package.json').version")"
+          TAG_NAME="$GITHUB_REF_NAME"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          ANDROID_VERSION="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)"/\1/p' android/app/build.gradle)"
+
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Oznaka $TAG_NAME nije stabilna verzija oblika v1.2.3."
+            exit 1
           fi
+
+          if [[ "$TAG_NAME" != "v$PACKAGE_VERSION" ]]; then
+            echo "Oznaka $TAG_NAME ne odgovara package.json verziji v$PACKAGE_VERSION."
+            exit 1
+          fi
+
+          if [[ "$ANDROID_VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "Android verzija $ANDROID_VERSION ne odgovara package.json verziji $PACKAGE_VERSION."
+            exit 1
+          fi
+
           echo "TAG_NAME=$TAG_NAME" >> "$GITHUB_ENV"
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "SHOULD_RELEASE=false" >> "$GITHUB_ENV"
@@ -89,4 +101,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           APK="release/Moja_potrosnja_struje-${TAG_NAME}.apk"
-          gh release create "$TAG_NAME" "$APK" --target "$GITHUB_SHA" --generate-notes
+          gh release create "$TAG_NAME" "$APK" --verify-tag --title "$TAG_NAME" --generate-notes

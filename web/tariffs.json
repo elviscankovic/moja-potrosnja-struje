@@ -1,12 +1,20 @@
 {
-  "version": 1,
+  "version": 2,
   "effectiveFrom": "2026-01-01",
-  "checkedAt": "2026-08-23",
+  "checkedAt": "2026-08-24",
   "sourceUrls": [
     "https://mojracun.hep.hr/elektra/kalkulator",
     "https://www.hep.hr/elektra/kucanstvo/tarifne-stavke-cijene/1547",
     "https://www.hep.hr/ods/korisnici/kucanstvo/tarifne-stavke-cijene/160"
   ],
+  "energyLimit": {
+    "enabled": true,
+    "periodStart": "2026-04-01",
+    "periodEnd": "2026-09-30",
+    "thresholdKwh": 3000,
+    "surchargePercent": 35,
+    "scope": "meter"
+  },
   "rates": {
     "energySingle": 0.091324,
     "energyVt": 0.097189,

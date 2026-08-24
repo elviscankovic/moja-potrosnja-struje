@@ -10,6 +10,26 @@ window.document.write(await readFile(`${webDir}/index.html`, 'utf8'));
 window.document.close();
 window.confirm = () => true;
 
+const legacyReadings = [
+  { id: 'legacy-a', date: '2026-07-09', vt: 1000, nt: 500, note: '' },
+  { id: 'legacy-b', date: '2026-08-01', vt: 1498, nt: 649, note: '' }
+];
+window.localStorage.setItem('moja-potrosnja-struje-v1', JSON.stringify({
+  readings: legacyReadings,
+  rates: {
+    energyVt: 0.097189,
+    energyNt: 0.047688,
+    transmissionVt: 0.021256,
+    transmissionNt: 0.008175,
+    distributionVt: 0.044446,
+    distributionNt: 0.020514,
+    renewableFee: 0.013239,
+    supplyFee: 0.982,
+    meteringFee: 1.983,
+    vatRate: 13
+  }
+}));
+
 for (const [name, value] of Object.entries({
   window,
   document: window.document,
@@ -25,7 +45,7 @@ const pageErrors = [];
 window.addEventListener('error', (event) => pageErrors.push(event.error || event.message));
 
 const remoteTariffs = JSON.parse(await readFile('web/tariffs.json', 'utf8'));
-remoteTariffs.version = 2;
+remoteTariffs.version = 3;
 remoteTariffs.effectiveFrom = '2026-10-01';
 remoteTariffs.rates.energySingle = 0.1;
 Object.defineProperty(globalThis, 'fetch', {
@@ -37,15 +57,42 @@ await import(pathToFileURL(resolve(webDir, 'app.js')).href);
 await new Promise((resolve) => setTimeout(resolve, 25));
 
 const automaticallyUpdatedState = JSON.parse(localStorage.getItem('moja-potrosnja-struje-v1'));
-assert.equal(automaticallyUpdatedState.tariffVersion, 2);
+assert.equal(automaticallyUpdatedState.meters.length, 1);
+assert.equal(automaticallyUpdatedState.meters[0].name, 'Glavno brojilo');
+assert.equal(automaticallyUpdatedState.meters[0].type, 'dual');
+assert.deepEqual(automaticallyUpdatedState.meters[0].readings, legacyReadings);
+assert.equal(automaticallyUpdatedState.activeMeterId, 'meter-default');
+assert.equal(automaticallyUpdatedState.tariffVersion, 3);
 assert.equal(automaticallyUpdatedState.ratesEffectiveFrom, '2026-10-01');
 assert.equal(automaticallyUpdatedState.rates.energySingle, 0.1);
-assert.match(document.querySelector('#tariffStatus').textContent, /paket 2/);
+assert.equal(automaticallyUpdatedState.energyLimit.thresholdKwh, 3000);
+assert.equal(automaticallyUpdatedState.energyLimit.surchargePercent, 35);
+assert.equal(automaticallyUpdatedState.energyLimit.scope, 'meter');
+assert.match(document.querySelector('#tariffStatus').textContent, /paket 3/);
+assert.match(document.querySelector('#energyLimitStatus').textContent, /3\.000 kWh po mjernom mjestu/);
+assert.match(document.querySelector('#energyLimitStatus').textContent, /35%/);
 assert.equal(document.querySelector('#autoTariffCheck').checked, true);
 document.querySelector('#autoTariffCheck').checked = false;
 document.querySelector('#autoTariffCheck').dispatchEvent(new window.Event('change', { bubbles: true }));
 assert.equal(JSON.parse(localStorage.getItem('moja-potrosnja-struje-v1')).autoTariffCheck, false);
 assert.match(document.querySelector('#tariffStatus').textContent, /automatska provjera isključena/);
+
+const stateBeforeFailedTariffCheck = localStorage.getItem('moja-potrosnja-struje-v1');
+globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+const originalConsoleError = console.error;
+const expectedTariffErrors = [];
+console.error = (...args) => expectedTariffErrors.push(args);
+document.querySelector('#checkRatesBtn').click();
+await new Promise((resolve) => setTimeout(resolve, 25));
+console.error = originalConsoleError;
+assert.equal(expectedTariffErrors.length, 1);
+assert.match(String(expectedTariffErrors[0][0]), /Greška pri provjeri tarifnih stavki/);
+assert.equal(localStorage.getItem('moja-potrosnja-struje-v1'), stateBeforeFailedTariffCheck);
+assert.equal(
+  document.querySelector('#tariffStatus').textContent,
+  'Provjera cijena nije uspjela. Postojeće cijene ostaju spremljene.'
+);
+assert.equal(document.querySelector('#checkRatesBtn').disabled, false);
 
 const contactLink = document.querySelector('#contactLink');
 assert.equal(contactLink.textContent, 'Pošalji prijedlog ili prijavi problem');
@@ -67,15 +114,15 @@ const date = document.querySelector('#readingDate');
 const vt = document.querySelector('#readingVt');
 const nt = document.querySelector('#readingNt');
 
-date.value = '2026-07-09';
-vt.value = '0';
-nt.value = '0';
+date.value = '2026-08-15';
+vt.value = '1600';
+nt.value = '700';
 document.querySelector('#readingForm').dispatchEvent(new window.Event('submit', {
   bubbles: true,
   cancelable: true
 }));
 
-assert.match(document.querySelector('#readingCount').textContent, /^1 očitanje$/);
+assert.match(document.querySelector('#readingCount').textContent, /^3 očitanja$/);
 
 const backup = JSON.stringify({
   version: 1,
@@ -123,19 +170,23 @@ assert.equal(document.querySelector('#activeMeterType').textContent, 'Jednotarif
 assert.equal(document.querySelector('#ntField').classList.contains('hidden'), true);
 assert.equal(document.querySelector('#vtLabelText').textContent, 'Stanje brojila (kWh)');
 
-date.value = '2026-07-01';
-vt.value = '100';
+date.value = '2026-04-01';
+vt.value = '0';
 document.querySelector('#readingForm').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
-date.value = '2026-08-01';
-vt.value = '150';
+date.value = '2026-09-30';
+vt.value = '3400';
 document.querySelector('#readingForm').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
 assert.match(document.querySelector('#readingCount').textContent, /^2 očitanja$/);
-assert.match(document.querySelector('#historyBody').textContent, /50 kWh/);
+assert.match(document.querySelector('#historyBody').textContent, /3\.400 kWh/);
+assert.equal(document.querySelector('#billSurchargeRow').classList.contains('hidden'), false);
+assert.notEqual(document.querySelector('#billEnergySurcharge').textContent, '0,00 €');
+assert.match(document.querySelector('#energyLimitStatus').textContent, /evidentirano je 3\.400 kWh/);
+assert.match(document.querySelector('#energyLimitStatus').textContent, /400 kWh iznad praga/);
 
-document.querySelector('#filterFrom').value = '2026-08-01';
+document.querySelector('#filterFrom').value = '2026-09-30';
 document.querySelector('#filterFrom').dispatchEvent(new window.Event('change', { bubbles: true }));
 assert.equal(document.querySelector('#readingCount').textContent, '1 od 2 zapisa');
-assert.match(document.querySelector('#printFilter').textContent, /01\. 08\. 2026/);
+assert.match(document.querySelector('#printFilter').textContent, /30\. 09\. 2026/);
 assert.equal(document.querySelectorAll('#historyBody tr').length, 1);
 
 assert.equal(document.querySelector('.payment-button'), null);

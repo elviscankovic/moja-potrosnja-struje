@@ -1,7 +1,12 @@
 import { DEFAULT_RATES, enrichReadings, formatDate, validateReading } from './calc.js';
 import { parseBackup, readBackupFile } from './backup.js';
 import { METER_TYPES, countReadings, meterTypeLabel, migrateState } from './model.js';
-import { REMOTE_TARIFF_URL, isNewerTariffPackage, normalizeTariffPackage } from './tariffs.js';
+import {
+  BUNDLED_TARIFF_META,
+  REMOTE_TARIFF_URL,
+  isNewerTariffPackage,
+  normalizeTariffPackage
+} from './tariffs.js';
 
 const STORAGE_KEY = 'moja-potrosnja-struje-v1';
 const state = loadState();
@@ -49,6 +54,7 @@ const elements = {
   checkRatesBtn: document.querySelector('#checkRatesBtn'),
   autoTariffCheck: document.querySelector('#autoTariffCheck'),
   tariffStatus: document.querySelector('#tariffStatus'),
+  energyLimitStatus: document.querySelector('#energyLimitStatus'),
   chart: document.querySelector('#chart'),
   toast: document.querySelector('#toast'),
   installBtn: document.querySelector('#installBtn')
@@ -58,9 +64,9 @@ const rateIds = Object.keys(DEFAULT_RATES);
 
 function loadState() {
   try {
-    return migrateState(JSON.parse(localStorage.getItem(STORAGE_KEY)), DEFAULT_RATES);
+    return migrateState(JSON.parse(localStorage.getItem(STORAGE_KEY)), DEFAULT_RATES, BUNDLED_TARIFF_META);
   } catch {
-    return migrateState(null, DEFAULT_RATES);
+    return migrateState(null, DEFAULT_RATES, BUNDLED_TARIFF_META);
   }
 }
 
@@ -156,7 +162,7 @@ function drawPdfTableHeader(doc, y, widths) {
 
 async function createReadingsPdf() {
   const meter = activeMeter();
-  const allReadings = enrichReadings(meter.readings, state.rates, meter.type);
+  const allReadings = enrichReadings(meter.readings, state.rates, meter.type, state.energyLimit);
   const readings = filteredReadings(allReadings);
   if (!readings.length) throw new Error('Nema filtriranih podataka za PDF.');
   if (!window.jspdf?.jsPDF) throw new Error('PDF modul nije dostupan.');
@@ -228,12 +234,12 @@ async function createReadingsPdf() {
 
 function render() {
   const meter = activeMeter();
-  const enriched = enrichReadings(meter.readings, state.rates, meter.type);
+  const enriched = enrichReadings(meter.readings, state.rates, meter.type, state.energyLimit);
   renderMeterControls(meter);
   renderSummary(enriched);
   renderHistory(enriched, meter);
   renderChart(enriched, meter.type);
-  renderRates();
+  renderRates(enriched);
 }
 
 function renderMeterControls(meter) {
@@ -286,7 +292,10 @@ function renderSummary(readings) {
   if (latest) {
     const previous = readings.at(-2);
     document.querySelector('#billPeriod').textContent = `${formatDate(previous.date)} – ${formatDate(latest.date)}`;
-    document.querySelector('#billEnergy').textContent = euro(latest.bill.energy);
+    document.querySelector('#billEnergy').textContent = euro(latest.bill.energyBase);
+    const surchargeRow = document.querySelector('#billSurchargeRow');
+    surchargeRow.classList.toggle('hidden', latest.bill.energySurcharge <= 0);
+    document.querySelector('#billEnergySurcharge').textContent = euro(latest.bill.energySurcharge);
     document.querySelector('#billTransmission').textContent = euro(latest.bill.transmission);
     document.querySelector('#billDistribution').textContent = euro(latest.bill.distribution);
     document.querySelector('#billRenewable').textContent = euro(latest.bill.renewable);
@@ -364,13 +373,33 @@ function renderChart(readings, meterType) {
   });
 }
 
-function renderRates() {
+function renderRates(readings = []) {
   rateIds.forEach((id) => {
     const input = document.querySelector(`#${id}`);
     if (input && document.activeElement !== input) input.value = state.rates[id];
   });
   elements.autoTariffCheck.checked = state.autoTariffCheck;
   renderTariffStatus();
+  renderEnergyLimitStatus(readings);
+}
+
+function renderEnergyLimitStatus(readings) {
+  const policy = state.energyLimit;
+  if (!policy?.enabled) {
+    elements.energyLimitStatus.textContent = 'Prag povećane cijene trenutačno nije aktivan.';
+    return;
+  }
+  const latestWithLimit = [...readings].reverse().find((item) => item.energyLimit);
+  const trackedKwh = latestWithLimit?.energyLimit?.cumulativeKwh || 0;
+  const excessKwh = Math.max(0, trackedKwh - policy.thresholdKwh);
+  const progress = trackedKwh > 0
+    ? excessKwh > 0
+      ? ` Prema upisanim očitanjima evidentirano je ${number(trackedKwh)} kWh, od čega ${number(excessKwh)} kWh iznad praga.`
+      : ` Prema upisanim očitanjima evidentirano je ${number(trackedKwh)} kWh; do praga ostaje ${number(policy.thresholdKwh - trackedKwh)} kWh.`
+    : '';
+  elements.energyLimitStatus.textContent = `Od ${formatDate(policy.periodStart)} do ${formatDate(policy.periodEnd)}: `
+    + `iznad ${number(policy.thresholdKwh, 0)} kWh po mjernom mjestu cijena radne energije uvećava se ${number(policy.surchargePercent, 0)}%.`
+    + progress;
 }
 
 function renderTariffStatus(message = '') {
@@ -410,7 +439,7 @@ async function checkForTariffUpdates({ manual = false } = {}) {
 
     const effectiveDate = formatDate(tariffPackage.effectiveFrom);
     const shouldUpdate = window.confirm(
-      `Pronađene su nove službene cijene u primjeni od ${effectiveDate}. Ažurirati sve tarifne stavke?`
+      `Pronađen je novi službeni paket cijena i pravila obračuna u primjeni od ${effectiveDate}. Ažurirati ga?`
     );
     if (!shouldUpdate) {
       saveState();
@@ -421,6 +450,7 @@ async function checkForTariffUpdates({ manual = false } = {}) {
     state.rates = tariffPackage.rates;
     state.tariffVersion = tariffPackage.version;
     state.ratesEffectiveFrom = tariffPackage.effectiveFrom;
+    state.energyLimit = tariffPackage.energyLimit;
     state.ratesCustomized = false;
     saveState();
     render();
@@ -428,7 +458,7 @@ async function checkForTariffUpdates({ manual = false } = {}) {
   } catch (error) {
     console.error('Greška pri provjeri tarifnih stavki:', error);
     if (manual) {
-      renderTariffStatus(error?.message || 'Provjera cijena nije uspjela.');
+      renderTariffStatus('Provjera cijena nije uspjela. Postojeće cijene ostaju spremljene.');
       showToast('Provjera cijena nije uspjela.');
     }
   } finally {
@@ -590,8 +620,9 @@ document.querySelector('#settingsForm').addEventListener('submit', (event) => {
 document.querySelector('#resetRatesBtn').addEventListener('click', () => {
   if (!window.confirm('Vratiti sve tarifne stavke na zadane vrijednosti?')) return;
   state.rates = { ...DEFAULT_RATES };
-  state.tariffVersion = 1;
-  state.ratesEffectiveFrom = '2026-01-01';
+  state.tariffVersion = BUNDLED_TARIFF_META.version;
+  state.ratesEffectiveFrom = BUNDLED_TARIFF_META.effectiveFrom;
+  state.energyLimit = { ...BUNDLED_TARIFF_META.energyLimit };
   state.ratesCustomized = false;
   saveState();
   render();
@@ -642,7 +673,7 @@ document.querySelector('#importInput').addEventListener('change', async (event) 
 
   try {
     const imported = parseBackup(await readBackupFile(file));
-    const migrated = migrateState(imported, DEFAULT_RATES);
+    const migrated = migrateState(imported, DEFAULT_RATES, BUNDLED_TARIFF_META);
     const importedCount = countReadings(migrated);
     if (!window.confirm(`Uvesti ${importedCount} očitanja u ${migrated.meters.length} mjernih mjesta? Trenutačni podaci bit će zamijenjeni.`)) return;
     state.meters = migrated.meters;
@@ -653,6 +684,7 @@ document.querySelector('#importInput').addEventListener('change', async (event) 
     state.lastTariffCheck = migrated.lastTariffCheck;
     state.ratesCustomized = migrated.ratesCustomized;
     state.autoTariffCheck = migrated.autoTariffCheck;
+    state.energyLimit = migrated.energyLimit;
     saveState();
     elements.filterFrom.value = '';
     elements.filterTo.value = '';

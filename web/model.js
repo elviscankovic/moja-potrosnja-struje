@@ -1,3 +1,5 @@
+import { normalizeEnergyLimitPolicy } from './tariffs.js';
+
 export const METER_TYPES = Object.freeze({
   SINGLE: 'single',
   DUAL: 'dual'
@@ -23,14 +25,27 @@ function normalizeMeter(meter, index) {
   };
 }
 
-export function migrateState(saved, defaultRates) {
+export function migrateState(saved, defaultRates, tariffDefaults = {}) {
   const rates = { ...defaultRates, ...(saved?.rates || {}) };
+  const defaultEnergyLimit = tariffDefaults.energyLimit || { enabled: false };
+  let energyLimit;
+  try {
+    const candidate = saved?.energyLimit && typeof saved.energyLimit === 'object'
+      ? { ...defaultEnergyLimit, ...saved.energyLimit }
+      : defaultEnergyLimit;
+    energyLimit = normalizeEnergyLimitPolicy(candidate);
+  } catch {
+    energyLimit = normalizeEnergyLimitPolicy(defaultEnergyLimit);
+  }
   const tariffMeta = {
-    tariffVersion: Number.isInteger(saved?.tariffVersion) ? saved.tariffVersion : 1,
-    ratesEffectiveFrom: typeof saved?.ratesEffectiveFrom === 'string' ? saved.ratesEffectiveFrom : '2026-01-01',
+    tariffVersion: Number.isInteger(saved?.tariffVersion) ? saved.tariffVersion : (tariffDefaults.version || 1),
+    ratesEffectiveFrom: typeof saved?.ratesEffectiveFrom === 'string'
+      ? saved.ratesEffectiveFrom
+      : (tariffDefaults.effectiveFrom || '2026-01-01'),
     lastTariffCheck: typeof saved?.lastTariffCheck === 'string' ? saved.lastTariffCheck : null,
     ratesCustomized: saved?.ratesCustomized === true,
-    autoTariffCheck: saved?.autoTariffCheck !== false
+    autoTariffCheck: saved?.autoTariffCheck !== false,
+    energyLimit
   };
 
   if (Array.isArray(saved?.meters) && saved.meters.length) {
