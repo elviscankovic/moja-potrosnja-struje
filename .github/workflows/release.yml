@@ -2,8 +2,10 @@ name: Android release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - '.github/release-version'
 
 permissions:
   contents: write
@@ -29,7 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG_NAME="$GITHUB_REF_NAME"
+          TAG_NAME="$(tr -d '[:space:]' < .github/release-version)"
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           ANDROID_VERSION="$(sed -n 's/^[[:space:]]*versionName[[:space:]]*"\([^"]*\)"/\1/p' android/app/build.gradle)"
 
@@ -94,6 +96,15 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -p -f 4 android/app/build/outputs/apk/release/app-release-unsigned.apk release/aligned.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks release/release-key.jks --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --out "release/Moja_potrosnja_struje-${TAG_NAME}.apk" release/aligned.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "release/Moja_potrosnja_struje-${TAG_NAME}.apk"
+
+      - name: Stvori oznaku izdanja
+        if: env.SHOULD_RELEASE == 'true' && env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/tags/${TAG_NAME}" -f sha="${GITHUB_SHA}"
+          fi
 
       - name: Objavi GitHub izdanje
         if: env.SHOULD_RELEASE == 'true' && env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != ''
