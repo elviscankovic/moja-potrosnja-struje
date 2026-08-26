@@ -5,7 +5,7 @@ Android paket aplikacije **Moja potrošnja struje**. Aplikacija je izrađena pom
 ## Identitet
 
 - Application ID: `hr.cankovic.mojapotrosnjastruje`
-- Verzija: `1.1.1`
+- Verzija: `1.1.2`
 - Version code: `16`
 - Licenca: GPL-3.0-only
 
